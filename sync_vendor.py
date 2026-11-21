@@ -6,7 +6,9 @@
 
 Copies launcher/, models/, mods/ and scripts/firmware/ (documentation and
 tests left out), records the emulator commit in vendor/UPSTREAM, and reports
-CDJ-850 mods the patcher does not offer yet. Prints "changed" or "unchanged".
+CDJ-850 mods the patcher does not offer yet. Prints "changed" or "unchanged";
+an emulator commit that leaves the copied files as they are keeps the old
+vendor/UPSTREAM and counts as unchanged.
 """
 import shutil
 import subprocess
@@ -53,6 +55,7 @@ def main():
                             check=True, capture_output=True, text=True).stdout.strip()
 
     before = snapshot(VENDOR)
+    recorded = before.pop("UPSTREAM", None)
     shutil.rmtree(VENDOR, ignore_errors=True)
     for tree in TREES:
         for source in sorted((upstream / tree).rglob("*")):
@@ -61,7 +64,11 @@ def main():
                 target = VENDOR / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
-    (VENDOR / "UPSTREAM").write_text(commit + "\n", encoding="utf-8")
+    changed = before != snapshot(VENDOR)
+    if changed or recorded is None:
+        (VENDOR / "UPSTREAM").write_text(commit + "\n", encoding="utf-8")
+    else:
+        (VENDOR / "UPSTREAM").write_bytes(recorded)
 
     sys.dont_write_bytecode = True
     sys.path[:0] = [str(ROOT), str(VENDOR), str(VENDOR / "mods"), str(VENDOR / "scripts/firmware")]
@@ -73,7 +80,7 @@ def main():
             print(f"::warning title=New CDJ-850 mod::{name} is in the emulator but not offered "
                   f"by the patcher. Add it to OPTIONS in patcher.py (or NOT_OFFERED in sync_vendor.py).")
 
-    print("changed" if before != snapshot(VENDOR) else "unchanged")
+    print("changed" if changed or recorded is None else "unchanged")
 
 
 if __name__ == "__main__":
