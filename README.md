@@ -8,7 +8,7 @@ To replace a custom build with stock firmware, leave all mods unchecked and ente
 
 **Firmware installation risk.** These custom builds are untested on physical decks. Installing one can cause playback problems or leave the deck unable to boot. Keep an original update for recovery.
 
-The browser verifies the stock update by SHA-256, applies the existing patches in a Web Worker, and offers the result as a local download. The worker loads the pinned Pyodide runtime from jsDelivr. Firmware files stay in the browser.
+The browser verifies the stock update by SHA-256, applies the existing patches in a Web Worker, and offers the result as a local download. The worker loads the pinned Pyodide runtime from jsDelivr and uses a JavaScript port of the reference LZSS encoder for compression. Firmware files stay in the browser.
 
 ## Development
 
