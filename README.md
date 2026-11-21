@@ -5,7 +5,7 @@
 Custom firmware for the Pioneer CDJ-850. Pick the mods you want in the browser and download a ready-to-install update file.
 
 > [!WARNING]
-> These custom builds are untested on physical decks. Installing one can cause playback problems or leave the deck unable to boot. Keep an original update file so you can recover.
+> These custom builds are tested on physical decks. However when installing custom firmware, there's always a risk of something going wrong. Installing one can cause playback problems or leave the deck unable to boot. Keep an original update file so you can recover.
 
 ## How to use it
 
