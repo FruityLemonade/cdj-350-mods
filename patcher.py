@@ -15,7 +15,7 @@ MODEL = "cdj850"
 OPTIONS = {
     "tempo_wide": ("USB WIDE tempo", "Enable ±100% tempo on USB. TEMPO jumps from ±10% straight to WIDE."),
     "flac": ("USB FLAC playback", "Experimental support for stereo 16-bit, 44.1 kHz FLAC files."),
-    "hot_cues": ("Hot cues", "Use BEAT 1, 2 and 4 for hot cues A–C. Toggle with BEAT SELECT + RELOOP."),
+    "hot_cues": ("Hot cues", "Use BEAT 1, 2 and 4 for hot cues A–C. Hold BEAT 8 and press one to delete it. Toggle with BEAT SELECT + RELOOP."),
     "quant_loops": ("Quantized loops", "Snap loops to the rekordbox beat grid. Toggle with BEAT SELECT + LOOP IN."),
     "loop_resize": ("Loop resize", "While a loop plays, use CUE/LOOP CALL to halve or double its length."),
     "bpm999": ("BPM up to 999", "Raise the tempo ceiling for rekordbox grids and the panel display."),
