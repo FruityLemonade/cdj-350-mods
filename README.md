@@ -30,6 +30,7 @@ All mods are off until you tick them, and you can combine them freely.
 | **Loop resize** | Halves or doubles a playing loop, following the beat grid when the track has one. | While a loop plays, press **CUE/LOOP CALL ◀** to halve it or **CALL ▶** to double it. Outside a loop the buttons work as normal. |
 | **BPM up to 999** | Raises the BPM limit from 180 to 999, for both rekordbox beat grids and the BPM display. Useful for very fast genres. | Nothing to do. Fast tracks just show and play with their real BPM. |
 | **BPM decimals** | Shows the actual BPM to two decimal places, for example `132.25`, in place of the rekordbox BPM. | Open the **INFO** view on a track with a beat grid. |
+| **INFO screen order** | Reorders the INFO screens for USB tracks: Track, the playing BPM with the key in Camelot notation (for example `128.23 12A`), waveform / Artist, Rating, Key / Album, Comment. With **MASTER TEMPO** off, the key follows the pitch. With **BPM decimals** in the build, the BPM is the beat-grid value. | Press **INFO** on a USB track and turn the jog to page through the screens. |
 | **20-minute auto standby** | Puts the deck into standby after 20 minutes without use, instead of 4 hours. | Turn on **AUTO STANDBY** in the **UTILITY** menu. |
 
 ## Going back to stock firmware

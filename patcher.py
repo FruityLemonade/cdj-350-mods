@@ -20,6 +20,7 @@ OPTIONS = {
     "loop_resize": ("Loop resize", "While a loop plays, use CUE/LOOP CALL to halve or double its length."),
     "bpm999": ("BPM up to 999", "Raise the tempo ceiling for rekordbox grids and the panel display."),
     "bpm_decimals": ("BPM decimals", "Show the actual BPM to two decimal places in place of the rekordbox BPM in the INFO view, on grid tracks."),
+    "info_order": ("INFO screen order", "Reorder the INFO screens for USB tracks: Track, BPM and Camelot key (e.g. 128.23 12A), waveform / Artist, Rating, Key / Album, Comment."),
     "auto_standby": ("20-minute auto standby", "Shorten the idle timeout to 20 minutes when AUTO STANDBY is enabled."),
 }
 
