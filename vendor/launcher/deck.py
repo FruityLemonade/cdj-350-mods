@@ -1,0 +1,347 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Start one older player: a model whose profile says MODEL_LAUNCH=deck. The
+CDJ-2000 and the CDJ-2000NXS run their display board inside the MAIN
+emulator; the XDJ-1000, XDJ-700 and CDJ-900NXS have none, MAIN draws the
+screen. Either way one QEMU process makes a deck's window; there is no second
+board, no DSP rig and no relay. Two decks are two such processes, each with
+its own log, panel key port (the first deck's plus one), MAC and VNC screen,
+sharing the USB stick, the DSP module and the Pro DJ Link segment.
+
+SNAPSHOT=<point> (idle or loaded) starts the deck from that saved point; when
+it is not saved yet the deck boots as usual and scripts/run/snapshot_deck.py
+drives it there and saves it (the profile's MODEL_IDLE_S and MODEL_LOAD_STEPS);
+with two decks only the first one does, the second boots plain.
+Points are cached per build, firmware, medium and MAIN_ARGS (snapshot.py).
+"""
+
+import os
+import shlex
+import shutil
+import stat
+import subprocess
+import sys
+import time
+
+from . import chain, host, model, mods, sites, snapshot
+from .chain import nonempty, say
+from .layout import Layout
+
+DEFAULT_GROUP = "239.255.77.12:12340"
+
+# The panel key socket's UDP port, which the key scripts send to.
+PANEL_KEY_PORT = 40124
+# Where an older deck sends MAIN's frame to the panel MCU, for the app's lamps.
+PANEL_STATE_PORT = 40024
+
+
+def default_audiodev():
+    k = host.kind()
+    return "sdl" if k == host.WINDOWS else "coreaudio" if k == host.MACOS else "pa"
+
+
+def _monsock(lay):
+    sys.path.insert(0, lay.run)
+    try:
+        import cdj_monsock
+    finally:
+        sys.path.remove(lay.run)
+    return cdj_monsock
+
+
+def _launchctl_manager():
+    try:
+        return subprocess.run(["launchctl", "managername"], capture_output=True, text=True).stdout.strip()
+    except OSError:
+        return ""
+
+
+def _is_socket(path):
+    try:
+        return stat.S_ISSOCK(os.stat(path).st_mode)
+    except OSError:
+        return False
+
+
+def window_display(d, tag, notes):
+    """The -display for a window: GUI_DISPLAY d made to fit this host, with
+    the cursor shown."""
+    k = host.kind()
+    if k == host.MACOS:
+        if d == "gtk":
+            d = "cocoa"
+        if d in ("cocoa", "sdl") and _launchctl_manager() != "Aqua":
+            notes.append((2, "[%s] no desktop session (ssh?) -- falling back to GUI_DISPLAY=none" % tag))
+            d = "none"
+    elif k != host.WINDOWS and d in ("gtk", "sdl"):
+        wayland = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/nonexistent"),
+                               os.environ.get("WAYLAND_DISPLAY", "wayland-0"))
+        if not (os.path.isdir("/tmp/.X11-unix") and os.listdir("/tmp/.X11-unix")) and not _is_socket(wayland):
+            notes.append((2, "[%s] no X or Wayland socket -- falling back to GUI_DISPLAY=none" % tag))
+            d = "none"
+    if d != "none" and not d.startswith("vnc") and "show-cursor=" not in d:
+        d += ",show-cursor=on"
+    return d
+
+
+def main_qemu(lay, env, m=None):
+    """The MAIN emulator: QEMU_BUILD/qemu-system-sh4, or QEMU_EB_BUILD/qemu-system-sh4eb
+    when the model's MAIN arch is sh4eb."""
+    if lay.packaged:
+        return lay.qemu_binaries()[1 if m and m.main_is_eb else 0]
+    if m and m.main_is_eb:
+        if env.get("GUI_QEMU"):
+            return host.native(env["GUI_QEMU"])
+        build = env.get("QEMU_EB_BUILD") or ("/c/qemu-build-eb-mingw" if host.is_windows()
+                                             else os.path.join(host.home(), "qemu-build-eb"))
+        return os.path.join(host.native(build), "qemu-system-sh4eb" + host.exe_suffix())
+    if env.get("MAIN_QEMU"):
+        return host.native(env["MAIN_QEMU"])
+    build = env.get("QEMU_BUILD") or ("/c/qemu-build-mingw" if host.is_windows()
+                                      else os.path.join(host.home(), "qemu-build"))
+    return os.path.join(host.native(build), "qemu-system-sh4" + host.exe_suffix())
+
+
+def missing_images(lay, m):
+    folder = model.extract_dir(lay, m)
+    return [m.extract + "/" + n for n in m.images if not os.path.isfile(os.path.join(folder, n))]
+
+
+def dsp_env(lay, m, env, found=None):
+    """The DSP knobs a model's profile sets."""
+    knobs = {}
+    if (found or sites.find(lay, m)).pinned:
+        knobs[m.dsp_idle_knob] = nonempty(env, m.dsp_idle_knob, m.dsp_idle)
+        if m.dsp_isr_fast:
+            knobs["C66X_IDLE_ISR_FAST"] = nonempty(env, "C66X_IDLE_ISR_FAST", m.dsp_isr_fast)
+    if m.dsp_mhz:
+        knobs["CDJ_C6747_MHZ"] = nonempty(env, "CDJ_C6747_MHZ", m.dsp_mhz)
+    return knobs
+
+
+def link_group(env):
+    """The Pro DJ Link segment (ip:port) when DJLINK=1, else an empty string."""
+    if env.get("DJLINK") != "1":
+        return ""
+    ip, _, port = nonempty(env, "GROUP", DEFAULT_GROUP).rpartition(":")
+    return "%s:%d" % (ip, host.pick_udp_port(int(port)))
+
+
+def deck_tag(m, n):
+    """What names deck n's files: the model id, with the number from deck 2 on."""
+    return m.id if n == 1 else "%s-%d" % (m.id, n)
+
+
+def deck_display(display, n):
+    """GUI_DISPLAY for deck n: a vnc=host:D display moves up one per deck, so
+    the app finds deck n's screen on its base port plus n."""
+    if n == 1 or not display.startswith("vnc="):
+        return display
+    head, _, number = display.rpartition(":")
+    return "%s:%d" % (head, int(number) + n - 1)
+
+
+def _selected_mods(lay, m, env):
+    return [knob[len("CDJ_MAIN_"):].lower() for row in mods.load(lay, m.id)
+            for knob in mods.env_names(row.env)
+            if knob.startswith("CDJ_MAIN_") and env.get(knob) == "1"]
+
+
+def patched_kernel(lay, m, env, kernel, tag):
+    """MAIN with the mods cdj.conf switched on patched in, as a copy under tmp;
+    the image itself when none is on."""
+    names = _selected_mods(lay, m, env)
+    if not names:
+        return kernel
+    patched = os.path.join(lay.tmp, "cdj-%s-main.bin" % tag)
+    subprocess.run(host.python_argv() + [os.path.join(lay.emu, "mods", "patch_main.py"),
+                                         "--model", m.id, kernel, patched] + names, check=True)
+    return patched
+
+
+def patched_flash(lay, m, env, flash, tag):
+    """(flash_path, snapshot_mode) for flash-booting decks (CDJ-850).
+    PERSIST=1 keeps a writable flash copy under data/ so the 0x3F8000 settings
+    sector persists across runs even when mods rewrite the 0x60000..0x3F0000 window."""
+    names = _selected_mods(lay, m, env)
+    persist = env.get("PERSIST") == "1"
+    if persist:
+        os.makedirs(lay.data, exist_ok=True)
+        dest = os.path.join(lay.data, "flash-%s.bin" % tag)
+        if not os.path.isfile(dest):
+            shutil.copyfile(flash, dest)
+            say("[%s] made %s -- settings at 0x3F8000 now persist" % (tag, dest))
+        if names:
+            subprocess.run(host.python_argv() + [os.path.join(lay.emu, "mods", "patch_main.py"),
+                                                 "--model", m.id, "--flash", dest, dest] + names, check=True)
+        return dest, "off"
+    if not names:
+        return flash, "on"
+    dest = os.path.join(lay.tmp, "cdj-%s-flash.bin" % tag)
+    subprocess.run(host.python_argv() + [os.path.join(lay.emu, "mods", "patch_main.py"),
+                                         "--model", m.id, "--flash", flash, dest] + names, check=True)
+    return dest, "on"
+
+
+def command(lay, m, env, n=1, main=None):
+    """(argv, env) of deck n's QEMU. The stick is a snapshot, so the
+    firmware's writes to it never reach the image. `main` runs another MAIN
+    image in place of the installed one, with the sites found in it."""
+    tag = deck_tag(m, n)
+    folder = model.extract_dir(lay, m)
+    env = dict(env)
+    env["CDJ_ATA"] = "1"
+    found = sites.find(lay, m, None if m.boots_flash else main)
+    sr_seed_slot = found.sr_seed_slot()
+    if sr_seed_slot is not None:
+        env["CDJ_SR_SEED_SLOT"] = sr_seed_slot
+    if m.has_dsp_module:
+        env.update(dsp_env(lay, m, env, found))
+    if m.display_upd:
+        env["CDJ_BF531_UPD"] = host.native(os.path.join(folder, model.DISPLAY_UPD_IMAGE))
+    if m.display_flash:
+        env["CDJ_M16C_GUI"] = host.native(os.path.join(folder, m.display_flash))
+    first_key_port = int(nonempty(env, "CDJ_PANEL_KEYSOCK", str(host.pick_udp_port(PANEL_KEY_PORT))))
+    env["CDJ_PANEL_KEYSOCK"] = str(first_key_port + n - 1)
+    if m.boots_flash:
+        flash_path, snap_mode = patched_flash(lay, m, env, main or os.path.join(folder, m.main_flash), tag)
+        boot_args = ["-drive", "if=pflash,format=raw,file=%s,snapshot=%s" % (host.native(flash_path), snap_mode)]
+    else:
+        boot_args = ["-kernel", host.native(patched_kernel(lay, m, env, main or os.path.join(folder, "main_unpacked.bin"), tag))]
+    argv = [main_qemu(lay, env, m), "-M", m.main_machine, "-name", m.title if n == 1 else "%s %d" % (m.title, n)] + boot_args + [
+            "-serial", "file:" + os.path.join(lay.logs, tag + ".log"),
+            "-drive", "if=none,id=usbstk,file=%s,format=raw,snapshot=on" % host.native(lay.usb_image),
+            "-device", "usb-storage,drive=usbstk,port=1"]
+    notes = []
+    display = window_display(deck_display(nonempty(env, "GUI_DISPLAY", "gtk"), n), m.id, notes)
+    for _level, text in notes:
+        say(text)
+    # The window has an absolute pointer (so the host never grabs the mouse),
+    # and QEMU then hides the host cursor over it unless show-cursor is on.
+    argv += ["-display", display]
+    if nonempty(env, "NOSOUND", "0") != "1":
+        # The same ring, prefill and latency cap (ms) as the NXS2's rig.
+        env["CDJ_DSP_AUDIO"] = nonempty(env, "CDJ_DSP_AUDIO", "1:3000:150:450")
+        argv += ["-audio", nonempty(env, "AUDIODEV", default_audiodev())]
+    group = link_group(env)
+    if group:
+        # QEMU's socket backend carries one frame per datagram; every deck on
+        # the group sees the others. The firmware reads its MAC from flash,
+        # which is empty here, so each deck on one segment needs its own, on
+        # the wire and in the packets the firmware builds.
+        argv += ["-netdev", "socket,id=djlink,mcast=" + group]
+        env["GROUP"] = group
+        env["CDJ_ETHER_MAC"] = nonempty(env, "CDJ_ETHER_MAC", "02:00:00:00:00:0%N%").replace("%N%", str(n))
+        own_mac = found.get("own_mac")
+        if own_mac is not None:
+            chain.hold_wire_mac(env, own_mac)
+    argv += shlex.split(env.get("MAIN_ARGS", ""))
+    return argv, env
+
+
+def _boot_image(argv):
+    if "-kernel" in argv:
+        return argv[argv.index("-kernel") + 1]
+    pflash = next(a for a in argv if a.startswith("if=pflash,"))
+    return next(p[len("file="):] for p in pflash.split(",") if p.startswith("file="))
+
+
+def point_dir(tmp, argv, env, media, point, left_out=()):
+    """Where a deck started with (argv, env) from command() keeps a saved
+    point: keyed by its QEMU, MAIN and display images, stick, DSP module,
+    MAIN_ARGS and sound device, and the knobs of command() a caller left out."""
+    files = [argv[0], _boot_image(argv)] + [env[k] for k in ("CDJ_BF531_UPD", "CDJ_M16C_GUI") if k in env] + [media]
+    # The sound device and the DSP module shape the machine as well.
+    files += [p for p in env.get("C66X_JIT", "").split(",") if p and os.path.isfile(p)]
+    audio = argv[argv.index("-audio") + 1] if "-audio" in argv else ""
+    options = env.get("MAIN_ARGS", "") + " " + audio + "".join(" -" + k for k in sorted(left_out))
+    return os.path.join(snapshot.root(tmp, files, options), point)
+
+
+def plan_snapshot(lay, m, argv, env, n=1):
+    """Adds what SNAPSHOT asks for to argv. Returns the argv of the driver that
+    reaches and saves the point, or None when there is nothing to save. Only
+    deck 1 saves it: two decks would write the same files."""
+    point = env.get("SNAPSHOT", "")
+    if not point:
+        return None
+    if point not in snapshot.POINTS:
+        raise SystemExit("SNAPSHOT point %r: known points are %s" % (point, ", ".join(snapshot.POINTS)))
+    if not (m.idle_s and m.load_steps):
+        raise SystemExit("SNAPSHOT: models/%s.conf sets no MODEL_IDLE_S and MODEL_LOAD_STEPS to reach a point" % m.id)
+    where = point_dir(lay.tmp, argv, env, lay.usb_image, point)
+    if snapshot.saved(where, ("main.vm",)):
+        argv += snapshot.restore_args(where)
+        say("starting from the saved '%s' point %s" % (point, host.native(where)))
+        return None
+    if n > 1:
+        return None
+    mon = "%s/cdj-deck-%s-mon.sock" % (lay.tmp, m.id)
+    argv += ["-monitor", _monsock(lay).spec(mon)] + snapshot.SAVE_ARGS
+    env.update({"MODEL_IDLE_S": m.idle_s, "MODEL_LOAD_STEPS": m.load_steps})
+    say("no saved '%s' point yet: the deck boots and saves it on the way" % point)
+    return host.python_argv() + [os.path.join(lay.run, "snapshot_deck.py"), "--reach", point, mon, where]
+
+
+def start(m, env, dry, app_cmd=(), decks=1):
+    """Run the player until its window closes. With app_cmd, the virtual deck
+    app is the window (the player's screen is on VNC) and closing it stops the
+    player. With decks=2 a second QEMU runs beside the first, and the player
+    stops once every deck has."""
+    lay = Layout()
+    missing = missing_images(lay, m)
+    if missing:
+        chain.err("missing firmware images: %s -- run ./setup.sh --model %s --firmware <the update file>"
+                  % (" ".join(missing), m.id))
+        return 1
+    if not os.path.isfile(lay.usb_image):
+        chain.err("no USB image yet -- run ./setup.sh --music <your rekordbox USB folder>")
+        return 1
+    if decks > 1 and not env.get("CDJ_PANEL_KEYSOCK"):
+        env = dict(env, CDJ_PANEL_KEYSOCK=str(host.pick_udp_block(PANEL_KEY_PORT, decks)))
+    runs = [command(lay, m, env, n) for n in range(1, decks + 1)]
+    reach = plan_snapshot(lay, m, runs[0][0], runs[0][1])
+    for n, (argv, deck_env) in enumerate(runs[1:], 2):
+        plan_snapshot(lay, m, argv, deck_env, n)
+    skipped = "MIDI controllers and mods" if app_cmd else "MIDI controllers, mods and the virtual deck app"
+    if decks == 1:
+        skipped = "A second deck, " + skipped
+    say("%s: %s with the USB stick. %s are CDJ-2000NXS2 features and are skipped." % (
+        m.title, "one window" if decks == 1 else "%d windows sharing one" % decks, skipped))
+    if decks > 1 and runs[0][1].get("DJLINK") == "1" and not sites.find(lay, m).has("own_mac"):
+        say("the firmware's own MAC was not found in this image, "
+            "so two linked decks may not settle their device numbers.")
+    if dry:
+        knobs = ["CDJ_ATA", "CDJ_BF531_UPD", "CDJ_M16C_GUI", "CDJ_PANEL_KEYSOCK", "CDJ_DSP_AUDIO", "CDJ_C6747_IDLE",
+                 "CDJ_C6727_IDLE", "C66X_IDLE_ISR_FAST", "C66X_JIT", "CDJ_ETHER_MAC", "CDJ_MPOKE"]
+        for argv, deck_env in runs:
+            say("would run:  %s %s" % (" ".join("%s=%s" % (k, deck_env[k]) for k in knobs if k in deck_env),
+                                       " ".join(shlex.quote(a) for a in argv)))
+        if app_cmd:
+            say("with:       GUI_DISPLAY=%s, then %s" % (env["GUI_DISPLAY"], " ".join(shlex.quote(a) for a in app_cmd)))
+        return 0
+    os.makedirs(lay.logs, exist_ok=True)
+    say("the first boot takes a minute; close the window or press Ctrl-C to stop.")
+    dhcp = None
+    if env.get("DJLINK") == "1":
+        # The deck announces itself only once it holds a lease. One server
+        # answers every deck on the segment.
+        with open(os.path.join(lay.tmp, "cdj-%s-dhcpd.log" % m.id), "wb") as log:
+            dhcp = subprocess.Popen(host.python_argv() + [os.path.join(lay.scripts, "net", "dhcp_server.py"),
+                                                          runs[0][1]["GROUP"]], stdout=log, stderr=subprocess.STDOUT)
+    qemus = [subprocess.Popen(argv, env=deck_env) for argv, deck_env in runs]
+    driver = subprocess.Popen(reach, env=runs[0][1]) if reach else None
+    window = subprocess.Popen(app_cmd, env=runs[0][1]) if app_cmd else None
+    try:
+        while any(q.poll() is None for q in qemus) and not (window and window.poll() is not None):
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    for q in qemus:
+        if q.poll() is None:
+            q.terminate()
+        q.wait()
+    for helper in (driver, dhcp, window):
+        if helper:
+            helper.terminate()
+    say("stopped.")
+    return 0

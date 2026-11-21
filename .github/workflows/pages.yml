@@ -1,0 +1,128 @@
+# Keeps the patcher site on the newest mods. Every hour (and on every push or
+# manual run) vendor/ is replaced with the tools and mods from the main branch
+# of FruityLemonade/cdj-850-emulator. When that changes anything, the sync is
+# committed, the payloads are rebuilt with the emulator's SH toolchain, and the
+# result is published to gh-pages. Runs from other branches build but do not
+# publish (the dist/ artifact is kept for a look).
+name: pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [emulator-updated]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: FruityLemonade/cdj-850-emulator
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sync.outputs.sha }}
+      build: ${{ steps.sync.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: main
+          path: upstream
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - id: sync
+        name: Sync vendor/ from the emulator
+        run: |
+          result=$(python3 sync_vendor.py upstream | tee /dev/stderr | tail -n 1)
+          upstream=$(cat vendor/UPSTREAM)
+          if [ "$result" = changed ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A vendor
+            git commit -q -m "Sync mods from cdj-850-emulator@${upstream:0:7}" \
+              -m "https://github.com/$UPSTREAM_REPO/commit/$upstream"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # An hourly check with nothing new leaves the published site as it is.
+          if [ "$result" = changed ] || [ "$GITHUB_EVENT_NAME" != schedule ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+      - id: upstream
+        run: echo "sha=$(cat vendor/UPSTREAM)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ steps.upstream.outputs.sha }}
+          path: upstream
+          sparse-checkout: scripts/build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - id: toolchain
+        uses: actions/cache@v4
+        with:
+          path: upstream/tools/sh-elf
+          key: sh-elf-${{ runner.os }}-${{ hashFiles('upstream/scripts/build/sh_elf_toolchain.sh') }}
+      - name: Build the SH-2A toolchain (only when the script changed)
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential zlib1g-dev
+          upstream/scripts/build/sh_elf_toolchain.sh
+          rm -rf upstream/tools/src
+
+      - name: Build the site
+        env:
+          CDJ850_SH_ELF: ${{ github.workspace }}/upstream/tools/sh-elf/bin/sh-elf-
+        run: python3 build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          include-hidden-files: true
+
+      - name: Publish to gh-pages
+        if: github.ref == 'refs/heads/main'
+        env:
+          MODS_SHA: ${{ needs.sync.outputs.sha }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          git worktree add -q site FETCH_HEAD
+          find site -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R dist/. site/
+          cd site
+          git add -A
+          if git diff --cached --quiet; then
+            echo "gh-pages already matches this build"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Publish patcher ${MODS_SHA:0:7} with cdj-850-emulator@${UPSTREAM_SHA:0:7}"
+          git push origin HEAD:gh-pages
