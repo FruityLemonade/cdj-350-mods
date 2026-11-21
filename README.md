@@ -2,7 +2,7 @@
 
 [Open the patcher](https://fruitylemonade.github.io/cdj-850-mods/)
 
-Choose an original Pioneer CDJ-850 v1.13 `C850MAIN.UPD`, select the mods you want, enter an output version in `D.DD` format, and download the repacked update. The options include USB WIDE tempo, experimental USB FLAC playback, hot cues, quantized loops, loop resize, BPM up to 999, BPM decimals, and 20-minute auto standby. The BPM display probe and payload demo are under Developer tools.
+Choose an original Pioneer CDJ-850 v1.13 `C850MAIN.UPD`, select the mods you want, enter an output version in `D.DD` format, and download the repacked update. The options include USB WIDE tempo, experimental USB FLAC playback, hot cues, quantized loops, loop resize, BPM up to 999, BPM decimals, and 20-minute auto standby.
 
 To replace a custom build with stock firmware, leave all mods unchecked and enter a version higher than the one shown on the deck. For example, use `1.15` on a deck running `1.14`. The stock firmware payload is copied byte for byte and only the version field changes. The service-mode updater can skip a file whose version matches the installed version.
 

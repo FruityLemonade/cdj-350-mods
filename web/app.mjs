@@ -17,14 +17,13 @@ let downloadUrl = null;
 
 const selected = () => [...modOptions.querySelectorAll("input:checked")].map((item) => item.value);
 const validVersion = () => /^[0-9]\.[0-9]{2}$/.test(version.value);
-const hasConflict = (mods) => stock.conflict.every((name) => mods.includes(name));
 
 for (const option of stock.options) {
   const row = get("mod-template").content.cloneNode(true);
   row.querySelector("input").value = option.id;
   row.querySelector("strong").textContent = option.title;
   row.querySelector("strong + span").textContent = option.description;
-  get(option.developer ? "developer-mods" : "player-mods").append(row);
+  get("player-mods").append(row);
 }
 
 function status(message, tone = "") {
@@ -41,21 +40,15 @@ function resetDownload() {
 }
 
 function renderControls() {
-  const mods = selected();
-  const count = mods.length;
-  const conflict = hasConflict(mods);
+  const count = selected().length;
   const invalid = !validVersion();
   get("input-summary").textContent = input ? `Verified v${stock.stockVersion}` : checking ? "Verifying…" : "Awaiting file";
   get("mod-summary").textContent = count;
-  const modError = get("mods-error");
-  modError.hidden = !conflict;
-  modError.textContent = conflict ? "Choose either BPM up to 999 or BPM display probe. Both change the BPM display." : "";
   version.setAttribute("aria-invalid", String(invalid));
-  build.disabled = busy || !input || invalid || conflict;
+  build.disabled = busy || !input || invalid;
   pick.disabled = modOptions.disabled = version.disabled = busy;
   if (!busy && !downloadUrl) {
     if (invalid) status("Enter a version like 1.15.", "error");
-    else if (conflict) status("Resolve the BPM mod conflict before repacking.", "error");
     else if (!input) status("Choose an original firmware file.");
     else if (count) status("Ready to apply your selections.");
     else status("Ready to repack stock firmware.");
@@ -136,7 +129,7 @@ version.addEventListener("input", updateSelections);
 
 build.addEventListener("click", () => {
   const mods = selected();
-  if (!input || busy || !validVersion() || hasConflict(mods)) return;
+  if (!input || busy || !validVersion()) return;
   const label = version.value;
 
   busy = true;

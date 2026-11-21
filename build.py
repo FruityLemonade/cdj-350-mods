@@ -41,11 +41,14 @@ def package_engine(path, sources):
 def main():
     web = ROOT / "web"
     sources = [(ROOT / "patcher.py", "patcher.py")]
-    sources += [
-        (path, path.relative_to(VENDOR).as_posix())
-        for path in sorted(VENDOR.rglob("*"))
-        if path.is_file() and path.suffix in {".py", ".conf", ".bin", ".s", ".S", ".c", ".h", ".ld"}
-    ]
+    mod_dirs = patcher.OPTIONS.keys() | {"loader", "payload", "players"}
+    for path in sorted(VENDOR.rglob("*")):
+        if not path.is_file() or path.suffix not in {".py", ".conf", ".bin", ".s", ".S", ".c", ".h", ".ld"}:
+            continue
+        name = path.relative_to(VENDOR)
+        if name.parts[0] == "mods" and len(name.parts) > 2 and name.parts[1] not in mod_dirs:
+            continue
+        sources.append((path, name.as_posix()))
     DIST.mkdir(exist_ok=True)
     bundle = DIST / "patcher.zip"
     package_engine(bundle, sources)
@@ -65,11 +68,9 @@ def main():
         "stockVersion": model.fw_version,
         "stockHash": model.upd_sha256[0],
         "options": [
-            {"id": name, "title": title, "description": description,
-             "developer": name in patcher.DEVELOPER_OPTIONS}
+            {"id": name, "title": title, "description": description}
             for name, (title, description) in patcher.OPTIONS.items()
         ],
-        "conflict": patcher.CONFLICT,
     }
     (output / "stock.mjs").write_text(f"export default {json.dumps(config)};\n", encoding="utf-8")
     index = (web / "index.html").read_text(encoding="utf-8")

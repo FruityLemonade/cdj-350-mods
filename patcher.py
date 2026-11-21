@@ -21,11 +21,7 @@ OPTIONS = {
     "bpm999": ("BPM up to 999", "Raise the tempo ceiling for rekordbox grids and the panel display."),
     "bpm_decimals": ("BPM decimals", "Show the actual BPM to two decimal places in the INFO view on grid tracks."),
     "auto_standby": ("20-minute auto standby", "Shorten the idle timeout to 20 minutes when AUTO STANDBY is enabled."),
-    "bpm_probe": ("BPM display probe", "Force the BPM display to 199 and cycle the frame digits from 75 to 99."),
-    "payload_demo": ("Payload demo", "Install reference hooks that count firmware calls for debugging."),
 }
-DEVELOPER_OPTIONS = {"bpm_probe", "payload_demo"}
-CONFLICT = ("bpm999", "bpm_probe")
 
 rows = conf_rows()
 MODS = {name: rows[name] for name in OPTIONS}
@@ -46,8 +42,6 @@ def prebuilt_payload(folders, model):
 def patch_update(stock, selections, version, progress):
     if any(name not in MODS for name in selections):
         raise ValueError("Choose modifications from the available options.")
-    if all(name in selections for name in CONFLICT):
-        raise ValueError("Choose either BPM up to 999 or BPM display probe. Both change the BPM display.")
     if hashlib.sha256(stock).hexdigest() != modelfw.main_file(MODEL)[1]:
         raise ValueError("Choose the original CDJ-850 firmware version 1.13.")
 

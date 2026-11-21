@@ -141,10 +141,6 @@ h2 { font-size: 1.14rem; line-height: 1.25; letter-spacing: -.018em; }
 
 fieldset { display: grid; gap: 8px; min-width: 0; padding: 0; margin: 0; border: 0; }
 .mod-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-details { border-top: 1px solid var(--line); margin-top: 4px; }
-summary { padding-block: 10px 4px; color: var(--muted); font-size: .875rem; cursor: pointer; }
-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-details[open] summary { margin-bottom: 8px; }
 .mod {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
