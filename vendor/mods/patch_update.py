@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Patch a real Pioneer firmware update (.UPD) with a mod.
+
+    usage: patch_update.py [--model <id>] [--version D.DD | --keep-version]
+                           <in.UPD> <out.UPD> [<mod> ...]
+           patch_update.py [--model <id>] --list
+
+--model picks the player the update is for (default cdj2000nxs2); its profile
+(models/<id>.conf) says which section holds MAIN and where the packed
+application starts. Every player's one-file update has the container read
+here and the same two checksums; a mod is offered only for a player that has
+a patch for it. The CDJ-2000 and CDJ-900 ship one file per section: name their
+MAIN file (C2KMAIN.UPD, C900MAIN.UPD), which is one section with no manifest
+before it. The other three files are never patched: they are checked against
+the shipped ones and copied next to the output.
+
+A mod is named by its folder, mods/<mod>/ (three_band, osc, ableton_link,
+...), and brings every patch its mod.conf switches on; --list shows them. A
+single patch (patch_gui.py --list, patch_main.py --list) can still be named on
+its own.
+With no mod named, every section is copied through untouched -- a repack
+that reproduces the input byte for byte, useful for proving the container
+handling itself is not what changed.
+
+The update is taken as it comes, already modded or not. A mod already in it
+is left alone (patching a patched update changes nothing more); a mod whose
+site was changed by someone else, or whose version does not match, is left out
+and reported while the others are applied; the section lengths and checksums
+are rewritten for what is written, and a checksum that did not match on the
+way in is no reason to refuse it.
+
+A player whose MAIN carries a DSP program as data can have mods that patch it
+(dsppatch.py); they are named like the others and ride in the MAIN section.
+
+Every mod here also has a --list entry in patch_gui.py or patch_main.py,
+since that is the tool that actually knows how to splice it into its image;
+this is the container-level wrapper around them. Only mods that patch real
+firmware code are offered -- an emulator-only knob such as high_fps or
+live_clock (emulator/mods/<mod>/mod.conf) has nothing to write into a .UPD and
+does not appear here.
+
+    1. Split the update into its sections (the same manifest split_update.py
+       reads: CRLF-decimal lengths, then the sections concatenated).
+    2. Decode the target section to the raw image patch_gui.py/patch_main.py
+       works on: an LZSS stream for the GUI section, Motorola S-records
+       wrapping the same LZSS codec for the MAIN section.
+    3. Apply every requested mod for that image in one patch() call, so they
+       share one placement and cannot collide.
+    4. Re-encode (lzss_encode.py) and recompute the section's own length
+       field and checksum(s) -- gui_encode.py, main_encode.py.
+    5. Rewrite the manifest (only the patched sections' sizes change) and
+       concatenate the sections back into a new .UPD.
+
+Every mod declares the firmware version(s) of its target image it was
+verified against (MODS[name].fw_versions). patch_update.py reads the
+update's own version string for that image and leaves out a mod it was not
+verified for -- pass --force-version to patch anyway, at your own risk.
+
+CDJ-850 version label. The deck's service-mode USB update (USB SELECT +
+RELOOP at power-on) skips a file whose label matches the running firmware
+(upd_flash_write 0x0C08EC44, see c850_repack.installs_over), and then shows
+COMPLETE! having written nothing. A modded CDJ-850 file is therefore
+labelled with the first digit 0 by default ("1.13" -> "0.13",
+c850_repack.mod_label): a label starting below '1' is always written, so it
+installs over stock and over any earlier modded build, and the stock file
+(1.13) always installs over it (rollback). The version screen then reads
+"Ver 0.13". --version D.DD sets another label, --keep-version keeps the
+input's (a file labelled like the running firmware is skipped). The label
+is outside the summed bytes. A "0.DD" input counts as firmware 1.DD for the
+mods' version check. Other models are unchanged.
+
+THIS IS UNTESTED ON REAL HARDWARE. The container repacks correctly and the
+patched image has been proven identical to patch_gui.py's/patch_main.py's own
+output (see emulator/tests/), but nobody has flashed one of these into a real
+deck. Flashing a modified firmware update is entirely at your own risk: keep
+the original .UPD to restore from, and expect that a mistake here can require
+a service-mode recovery or worse.
+"""
+import os
+import re
+import shutil
+import struct
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+FIRMWARE = os.path.join(HERE, '..', 'scripts', 'firmware')
+sys.path.insert(0, HERE)
+sys.path.insert(0, FIRMWARE)
+
+import modelfw
+import patch_main
+import c850_repack
+import validate
+from launcher import layout, mods as mod_rows
+
+
+def _section_version(header, fw=None):
+    if isinstance(header, (bytes, bytearray)):
+        header = header.decode('latin1', errors='replace')
+    m = re.search(r'(?:Ver)?(\d+\.\d+)', header)
+    if not m:
+        raise SystemExit('patch_update: no version string in section header %r' % header)
+    if fw is not None and fw.container == 'c850':
+        return c850_repack.base_version(m.group(1))     # a modded "0.13" is 1.13
+    return m.group(1)
+
+
+def label_option(args):
+    """(label option, args without it): ('keep', None), ('set', 'D.DD') or
+    ('default', None) for --keep-version, --version D.DD or neither."""
+    if '--keep-version' in args and '--version' in args:
+        die('--version and --keep-version exclude each other')
+    if '--keep-version' in args:
+        return ('keep', None), [a for a in args if a != '--keep-version']
+    if '--version' in args:
+        i = args.index('--version')
+        if i + 1 >= len(args):
+            die('--version needs a label (D.DD, like 0.13)')
+        v = args[i + 1]
+        if not re.fullmatch(r'[0-9]\.[0-9]{2}', v):
+            die('--version %r is not D.DD (like 0.13)' % v)
+        return ('set', v), args[:i] + args[i + 2:]
+    return ('default', None), args
+
+
+def c850_label(section, option):
+    """(the label the modded CDJ-850 file gets, a line saying why)."""
+    have = c850_repack.get_version(section)
+    kind, value = option
+    if kind == 'keep':
+        label = have
+    elif kind == 'set':
+        label = value
+    else:
+        label = c850_repack.mod_label(c850_repack.base_version(have))
+    stock = c850_repack.base_version(have)
+    over_stock = c850_repack.installs_over(label, stock)
+    over_self = c850_repack.installs_over(label, label)
+    why = ('label %s (%s): %s over a deck running %s, %s over a deck running %s itself; the stock %s file %s over it'
+           % (label, {'keep': 'kept, --keep-version', 'set': '--version', 'default': 'default mod label'}[kind],
+              'installs' if over_stock else 'SKIPPED by the updater', stock,
+              'installs' if over_self else 'skipped', label, stock,
+              'installs' if c850_repack.installs_over(stock, label) else 'is SKIPPED'))
+    return label, why
+
+
+def _decode_target(target, section, fw):
+    if target == 'main' and fw.container == 'c850':
+        hdr = section[c850_repack.LABEL_OFF:c850_repack.PACKED_OFF]
+        return hdr, None, None, c850_repack.unpack_main(section)
+    raise SystemExit('patch_update: unsupported target/container %s/%s' % (target, fw.container))
+
+
+def _encode_target(target, section, image, fw):
+    if target == 'main' and fw.container == 'c850':
+        return c850_repack.build_upd(section, image, check_boot=True)
+    raise SystemExit('patch_update: unsupported target/container %s/%s' % (target, fw.container))
+
+
+TARGETS = {
+    'main': (_decode_target, _encode_target, patch_main),
+}
+
+
+def registry(model):
+    """{mod name: (target, module)} across every target module."""
+    reg = {}
+    for target, (_, _, mod) in TARGETS.items():
+        for name in mod.mods_for(model):
+            reg[name] = (target, mod)
+    return reg
+
+
+def conf_rows():
+    """{mod: the registry names of its knobs}. A knob is named CDJ_GUI_<NAME>
+    or CDJ_MAIN_<NAME> after its patch_gui/patch_main entry, so one mod
+    (three_band) stands for every patch it switches on."""
+    return {row.key: [re.sub(r'^CDJ_(GUI|MAIN)_', '', knob).lower() for knob in row.env.split('+')]
+            for row in mod_rows.load(layout.Layout())}
+
+
+def section_version(header):
+    m = re.search(r'Ver(\d+\.\d+)', header)
+    if not m:
+        raise SystemExit('patch_update: no version string in section header %r' % header)
+    return m.group(1)
+
+
+def die(msg):
+    raise SystemExit('patch_update: %s' % msg)
+
+
+def main():
+    model, args = modelfw.model_id(sys.argv[1:])
+    force_version = '--force-version' in args
+    args = [a for a in args if a != '--force-version']
+    label_opt, args = label_option(args)
+    if label_opt[0] != 'default' and modelfw.load(model).container != 'c850':
+        die('--version/--keep-version only apply to the CDJ-850 (c850) container')
+
+    reg = registry(model)
+    rows = {key: [n for n in knobs if n in reg] for key, knobs in conf_rows().items()}
+
+    if args == ['--list']:
+        for key, patches in rows.items():
+            if patches:
+                versions = sorted({'%s Ver%s' % (reg[n][0], '/'.join(reg[n][1].mods_for(model)[n].fw_versions))
+                                   for n in patches})
+                print('%-12s [%s] %s' % (key, ', '.join(versions), ' '.join(patches)))
+        in_rows = {n for patches in rows.values() for n in patches}
+        for name, (target, mod) in reg.items():
+            if name not in in_rows:
+                m = mod.mods_for(model)[name]
+                print('%-12s [%s Ver%s] %s' % (name, target, '/'.join(m.fw_versions), m.what))
+        return
+
+    if len(args) < 2:
+        raise SystemExit(__doc__)
+    in_path, out_path = args[0], args[1]
+
+    # A row's name wins over a patch of the same name: `osc` is the whole osc
+    # row (osc + oscbeat), not its first patch alone.
+    names = []
+    for arg in args[2:]:
+        if rows.get(arg):
+            expanded = rows[arg]
+        elif arg in rows:
+            die('%s has nothing to write into a %s .UPD' % (arg, model))
+        elif arg in reg:
+            expanded = [arg]
+        else:
+            die('unknown mod %s -- see --list' % arg)
+        names += [n for n in expanded if n not in names]
+
+    by_target = {}
+    for name in names:
+        target, mod = reg[name]
+        by_target.setdefault(target, []).append(name)
+
+    with open(in_path, 'rb') as f:
+        data = f.read()
+    fw = modelfw.load(model)
+    sizes, hdrlen = modelfw.parse_manifest(data)
+    if fw.bare:
+        if sizes:
+            die('%s keeps each section in a file of its own: give the MAIN one, not a container' % model)
+        sizes = [len(data)]
+    off = hdrlen
+    sections = []
+    for size in sizes:
+        sections.append(data[off:off + size])
+        off += size
+    trailer = data[off:]
+
+    report, spans, profiles = {}, {}, {}
+    for target, target_names in by_target.items():
+        decode, encode, mod = TARGETS[target]
+        if target not in fw.sections:
+            die('%s has no %s section' % (model, target))
+        idx = fw.sections[target] - 1
+        if idx >= len(sections):
+            die('%s targets section %d, but this update only has %d'
+                % (target, idx + 1, len(sections)))
+        section = sections[idx]
+        header, declared, avail, image = _decode_target(target, section, fw)
+        version = _section_version(header, fw)
+        mods = mod.mods_for(model)
+        usable = []
+        for name in target_names:
+            wanted = mods[name].fw_versions
+            if version in wanted or force_version:
+                usable.append(name)
+            else:
+                report[name] = ('skipped', 'verified only for %s Ver%s; this update carries Ver%s '
+                                '-- pass --force-version to patch anyway (untested)'
+                                % (target, '/'.join(wanted), version))
+                print('patch_update: %s not applied: %s' % (name, report[name][1]))
+        patched = mod.patch(image, usable, model, report, spans.setdefault(target, {})) if usable else image
+        if patched == image:
+            continue
+        if hasattr(mod, 'PATCH_SETS') and model in mod.PATCH_SETS:
+            profiles[target] = mod.PATCH_SETS[model].profile
+        elif target == 'main':
+            profiles[target] = validate.default_main_profile(model)
+        sections[idx] = _encode_target(target, section, patched, fw)
+        if target == 'main' and fw.container == 'c850':
+            label, why = c850_label(section, label_opt)
+            sections[idx] = c850_repack.set_version(sections[idx], label)
+            print('patch_update: %s' % why)
+        print('patch_update: section %d (%s, Ver%s) %d -> %d bytes'
+              % (idx + 1, target, version, len(section), len(sections[idx])))
+
+    if names and not any(state != 'skipped' for state, _ in report.values()):
+        die('nothing to patch: %s' % '; '.join('%s: %s' % (n, why) for n, (_, why) in report.items()))
+
+    manifest = b'' if fw.bare else b''.join(b'%d\r\n' % len(s) for s in sections)
+    output = manifest + b''.join(sections) + trailer
+    checked = validate.verify(data, output, model, set(by_target), spans, profiles)
+    others = validate.check_other_files(os.path.dirname(os.path.abspath(in_path)), model, checked) if fw.bare else []
+    print(checked.text())
+    if checked.failed:
+        die('%s fails validation; nothing written' % out_path)
+    with open(out_path, 'wb') as f:
+        f.write(output)
+    for name, path in others:
+        copy = os.path.join(os.path.dirname(os.path.abspath(out_path)), name)
+        if os.path.abspath(path) != copy:
+            shutil.copyfile(path, copy)
+    print('patch_update: wrote %s (%d bytes)' % (out_path, len(output)))
+    print('patch_update: UNTESTED ON REAL HARDWARE -- flash at your own risk')
+
+
+if __name__ == '__main__':
+    main()

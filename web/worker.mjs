@@ -1,6 +1,6 @@
 const runtimeUrl = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 
-self.addEventListener("message", async ({ data: { input, mods } }) => {
+self.addEventListener("message", async ({ data: { input, mods, version } }) => {
   const progress = (message) => self.postMessage({ type: "progress", message });
   try {
     progress("Loading the patching engine…");
@@ -17,16 +17,20 @@ import sys
 from pathlib import Path
 
 sys.path[:0] = ["/patcher", "/patcher/mods", "/patcher/scripts/firmware"]
-from patcher import patch_update
+import payloadbuild
+from patcher import patch_update, prebuilt_payload
 
-def patch_file(selected, progress):
+payloadbuild.build = prebuilt_payload
+
+def patch_file(selected, version, progress):
     source = Path("/input.upd").read_bytes()
-    Path("/output.upd").write_bytes(patch_update(source, selected.split(","), progress))
+    mods = selected.split(",") if selected else []
+    Path("/output.upd").write_bytes(patch_update(source, mods, version, progress))
 
 patch_file
 `);
     try {
-      patch(mods.join(","), progress);
+      patch(mods.join(","), version, progress);
     } finally {
       patch.destroy();
     }
