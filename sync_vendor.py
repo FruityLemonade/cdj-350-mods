@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Replace vendor/ with the CDJ-850 tools and mods from an emulator checkout.
+"""Refresh the shared tools and check for CDJ-350 firmware mods.
 
     python3 sync_vendor.py path/to/cdj-850-emulator
 
 Copies launcher/, models/, mods/ and scripts/firmware/ (documentation and
 tests left out), records the emulator commit in vendor/UPSTREAM, and reports
-CDJ-850 mods the patcher does not offer yet. Prints "changed" or "unchanged";
+new CDJ-350 ports for review. Prints "changed" or "unchanged";
 an emulator commit that leaves the copied files as they are keeps the old
 vendor/UPSTREAM and counts as unchanged.
 """
@@ -20,7 +20,8 @@ VENDOR = ROOT / "vendor"
 TREES = ("launcher", "models", "mods", "scripts/firmware")
 SKIP_NAMES = {"Makefile", "__pycache__", ".DS_Store"}
 SKIP_SUFFIXES = {".md", ".pyc"}
-# Mod folders that are support code or developer tools, never offered on the site.
+MODEL = "cdj350"
+# Support code and developer tools need no review as user-selectable mods.
 NOT_OFFERED = {"loader", "payload", "players", "bpm_probe", "dsp_probe", "payload_demo"}
 
 
@@ -70,15 +71,12 @@ def main():
     else:
         (VENDOR / "UPSTREAM").write_bytes(recorded)
 
-    sys.dont_write_bytecode = True
-    sys.path[:0] = [str(ROOT), str(VENDOR), str(VENDOR / "mods"), str(VENDOR / "scripts/firmware")]
-    import patcher  # noqa: E402  (vendor/ must be in place first)
-    offered = set(patcher.OPTIONS) | NOT_OFFERED
     for conf in sorted((VENDOR / "mods").glob("*/mod.conf")):
         name = conf.parent.name
-        if patcher.MODEL in mod_models(conf) and name not in offered:
-            print(f"::warning title=New CDJ-850 mod::{name} is in the emulator but not offered "
-                  f"by the patcher. Add it to OPTIONS in patcher.py (or NOT_OFFERED in sync_vendor.py).")
+        if (name not in NOT_OFFERED and MODEL in mod_models(conf)
+                and (conf.parent / MODEL / "patch.py").is_file()):
+            print(f"::warning title=CDJ-350 mod available::{name} has a CDJ-350 implementation. "
+                  "Review CDJ-350 repacking and validation before offering it on the patcher.")
 
     print("changed" if changed or recorded is None else "unchanged")
 

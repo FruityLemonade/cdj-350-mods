@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Apply CDJ-850 modifications and repack an original Pioneer firmware update in your browser.">
+  <meta name="description" content="Verify and repack the original Pioneer CDJ-350 v1.14 firmware in your browser.">
   <meta name="theme-color" content="#171819">
-  <title>CDJ-850 Firmware Patcher</title>
+  <title>CDJ-350 Firmware Patcher</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171819'/%3E%3Cpath d='M7 16h18M16 7v18' fill='none' stroke='%23ffb455' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ffb455'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="__ASSET_PATH__/style.css">
   <script type="module" src="__ASSET_PATH__/app.mjs"></script>
@@ -13,20 +13,20 @@
 <body>
   <div class="shell">
     <header class="masthead">
-      <span class="brand"><span class="mark" aria-hidden="true"></span> CDJ-850 Mods</span>
-      <a href="https://github.com/FruityLemonade/cdj-850-mods">Source on GitHub</a>
+      <span class="brand"><span class="mark" aria-hidden="true"></span> CDJ-350 Mods</span>
+      <a href="https://github.com/FruityLemonade/cdj-350-mods">Source on GitHub</a>
     </header>
 
     <main>
       <div class="intro">
         <div>
           <h1>Firmware Patcher</h1>
-          <p>Apply mods to an original Pioneer CDJ-850 update or repack it with a new version number to restore stock firmware.</p>
+          <p>Verify and repack an original Pioneer CDJ-350 update. You can keep the stock version or change the version label.</p>
         </div>
         <div class="compatibility">
           <span class="label">Supported firmware</span>
-          <strong>CDJ-850 <span>v1.13</span></strong>
-          <small>Original <code>C850MAIN.UPD</code></small>
+          <strong>CDJ-350 <span>v1.14</span></strong>
+          <small>Original <code>C350MAIN.UPD</code></small>
         </div>
       </div>
 
@@ -41,13 +41,13 @@
               <div class="file-icon" aria-hidden="true"></div>
               <div class="drop-copy">
                 <strong id="file-title">Drop your update file here</strong>
-                <span id="file-detail">Original v1.13 update · .UPD</span>
+                <span id="file-detail">Original v1.14 update · .UPD</span>
               </div>
               <input type="file" id="firmware" accept=".upd,application/octet-stream" aria-label="Choose original firmware" hidden>
               <button type="button" class="button secondary" id="pick">Choose file</button>
             </div>
             <p class="file-error" id="file-error" role="alert" hidden></p>
-            <p class="privacy">Your firmware stays in this browser.</p>
+            <p class="privacy">Your firmware stays in this browser. <a href="https://support.pioneerdj.com/hc/en-us/sections/23663613177881">Get the official update</a>.</p>
           </section>
 
           <section class="panel" aria-labelledby="mods-heading">
@@ -55,17 +55,7 @@
               <span class="step" aria-hidden="true">02</span>
               <h2 id="mods-heading">Modifications</h2>
             </div>
-            <p class="section-note">Leave all mods unchecked to restore stock firmware.</p>
-            <fieldset id="mods">
-              <legend class="sr-only">Choose firmware modifications</legend>
-              <div class="mod-grid" id="player-mods"></div>
-            </fieldset>
-            <template id="mod-template">
-              <label class="mod">
-                <input type="checkbox" name="mod">
-                <span><strong></strong><span></span></span>
-              </label>
-            </template>
+            <p class="section-note">No firmware mods are available for the CDJ-350 yet.</p>
           </section>
         </div>
 
@@ -76,24 +66,23 @@
           </div>
           <dl>
             <div><dt>Input</dt><dd id="input-summary">Awaiting file</dd></div>
-            <div><dt>Selected mods</dt><dd id="mod-summary">0</dd></div>
           </dl>
           <label for="version" class="version-label">Output version</label>
           <input type="text" id="version" value="1.14" autocomplete="off" spellcheck="false" aria-describedby="version-help">
-          <p class="version-help" id="version-help">Use one digit, a dot and two digits. The USB updater skips a matching version such as <code>1.14</code> over <code>1.14</code>. Use <code>0.13</code> for a modded build you can reinstall, then restore stock with the original <code>1.13</code> update.</p>
+          <p class="version-help" id="version-help">Use one digit, a dot and two digits. Keep <code>1.14</code> for an exact copy of the original file.</p>
           <div class="warning">
-            <strong>Firmware installation risk</strong>
-            <p>Custom firmware can cause playback problems or leave the deck unable to boot. The INFO rating display has been tested in the emulator. Keep the original update for recovery.</p>
+            <strong>Installing firmware</strong>
+            <p>Keep the original update. Follow the <a href="https://downloads.support.alphatheta.com/firmwares/dj-players/CDJ-350/CDJ-350_update_guide_en.pdf">official CDJ-350 update guide</a>. Relabelled updates have not been tested on hardware.</p>
           </div>
           <button class="button primary" type="button" id="build" disabled>Repack firmware</button>
-          <a class="button primary" id="download" download="C850MAIN.UPD" hidden>Download C850MAIN.UPD</a>
+          <a class="button primary" id="download" download="C350MAIN.UPD" hidden>Download C350MAIN.UPD</a>
           <p class="status" id="status" role="status">Choose an original firmware file.</p>
         </section>
       </div>
     </main>
 
     <footer>
-      <p>Unofficial tool for Pioneer CDJ-850 owners.</p>
+      <p>Unofficial tool for Pioneer CDJ-350 owners.</p>
       <p id="patch-count" hidden></p>
     </footer>
   </div>

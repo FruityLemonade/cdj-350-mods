@@ -1,70 +1,25 @@
-# CDJ-850 Firmware Patcher
+# CDJ-350 Mods
 
-[Open the patcher](https://fruitylemonade.github.io/cdj-850-mods/)
+[Open the firmware patcher](https://fruitylemonade.github.io/cdj-350-mods/)
 
-Custom firmware for the Pioneer CDJ-850. Pick the mods you want in the browser and download a ready-to-install update file.
+Verify and repack the original Pioneer CDJ-350 **v1.14** firmware in your browser. There are currently no CDJ-350 firmware mods available in the patcher.
 
-> [!WARNING]
-> Custom firmware can cause playback problems or leave the deck unable to boot. The INFO rating display has been tested in the emulator and still needs verification on a physical deck. Keep the original update for recovery.
+## Repack the stock firmware
 
-## How to use it
+1. Get the CDJ-350 v1.14 update from [AlphaTheta's firmware downloads](https://pioneer-support.zendesk.com/hc/en-us/articles/11949537649305-Firmware) and extract `C350MAIN.UPD`.
+2. Open the patcher and choose `C350MAIN.UPD`. The patcher checks it against the SHA-256 of the original update. Your file stays in the browser.
+3. Keep the version at `1.14` for a byte-for-byte copy, or enter a different version label in the form `D.DD`. The label is the only field the repacker changes.
+4. Select **Repack firmware**, then download `C350MAIN.UPD`.
 
-1. Get the original Pioneer CDJ-850 **v1.13** update file, `C850MAIN.UPD`.
-2. Open the [patcher](https://fruitylemonade.github.io/cdj-850-mods/) and choose that file.
-3. Tick the mods you want (see the table below).
-4. Enter a version number in `D.DD` format. Use `0.13` if you want to reinstall modded builds with the same label and restore stock directly from the original `1.13` file. The patcher defaults to `1.14`. The USB updater skips a matching `1.xx` version.
-5. Download `C850MAIN.UPD` and copy it to the root of a FAT32 USB stick. Power on the deck while holding **USB SELECT + RELOOP**. Insert the stick when prompted. Once the display shows **COMPLETE!**, turn the deck off and back on.
+Keep the original update and follow the [official CDJ-350 update guide](https://downloads.support.alphatheta.com/firmwares/dj-players/CDJ-350/CDJ-350_update_guide_en.pdf) for installation. Repacked files have been checked byte-for-byte in the browser. Flashing a relabelled update has not been verified on hardware.
 
-Your firmware file never leaves your computer. All the patching happens in the browser.
-
-## Available mods
-
-All mods are off until you tick them, and you can combine them freely.
-
-| Mod | What it does | How to use it on the deck |
-|---|---|---|
-| **USB WIDE tempo** | Gives you ±100% tempo for USB tracks. | Press **TEMPO** to step through ±6%, ±10%, ±16% and **WIDE**, the same cycle as on a CD. |
-| **USB FLAC playback** | Plays stereo FLAC from USB at 16 or 24 bits and 44.1 or 48 kHz. The deck resamples 48 kHz audio to 44.1 kHz and uses the upper 16 bits of 24-bit audio, as it does for WAV. | Load and seek through a FLAC track as you would any other track. |
-| **Hot cues** *unfinished* | Turns **BEAT 1**, **2** and **4** into hot cues A, B and C. Reads the hot cues you set in rekordbox, and saves new ones back to the USB stick. The beat LEDs show which slots are set (lit) and which are empty (blinking). With **Quantized loops** on, a new cue lands on the nearest beat. | Press **BEAT SELECT + RELOOP** to switch hot-cue mode on or off (the display shows HOT CUE ON/OFF, and the setting is saved). Press a pad to jump to its cue, or to set one if the slot is empty. Hold **BEAT 8** and press a pad to delete its cue. *Not ready for live use yet: a jump takes a few seconds, because the deck first reads about 5 seconds of audio from the stick (the same wait as calling a memory cue).* |
-| **Quantized loops** | Makes loops snap to the nearest beat of the rekordbox grid, behind or ahead: auto beat loops, LOOP IN and LOOP OUT. Loops stay in time however many times they repeat. Needs USB tracks analysed in rekordbox. | Press **BEAT SELECT + LOOP IN** to switch quantize on or off (the display shows QUANTIZE ON/OFF, and the setting is saved). |
-| **Loop resize** | Halves or doubles a playing loop, following the beat grid when the track has one. | While a loop plays, press **CUE/LOOP CALL ◀** to halve it or **CALL ▶** to double it. Outside a loop the buttons work as normal. |
-| **BPM up to 999** | Raises the BPM limit from 180 to 999, for both rekordbox beat grids and the BPM display. Useful for very fast genres. | Nothing to do. Fast tracks just show and play with their real BPM. |
-| **BPM decimals** | Shows the actual BPM to two decimal places, for example `132.25`, in place of the rekordbox BPM. | Open the **INFO** view on a track with a beat grid. |
-| **INFO screen order** | Shows the playing BPM, Camelot key and rekordbox rating under the USB track title (for example `128.23 12A *****`). One asterisk represents one star. With **MASTER TEMPO** off, the key follows the pitch to the nearest semitone. With **BPM decimals** enabled and a beat grid available, the playing BPM follows the current beat's tempo. | Press **INFO** on a USB track with BPM metadata. The first page shows the title, the combined row and the waveform. Turn the jog for Artist, Rating and Key, then Album and Comment. |
-| **20-minute auto standby** | Puts the deck into standby after 20 minutes without use, instead of 4 hours. | Turn on **AUTO STANDBY** in the **UTILITY** menu. |
-
-## Going back to stock firmware
-
-Install the original `C850MAIN.UPD` (v1.13) using the USB update procedure above. If the deck already shows `1.13` for a modded build, the updater will skip the original file. Open the patcher with the original v1.13 file, leave every mod unticked, and export with a different label such as `1.14`. Repacking with zero mods preserves the original firmware and changes the version label.
-
-## How it works
-
-The browser checks the SHA-256 of your file to make sure it is the original v1.13 update. It then applies the patches in a Web Worker and offers the result as a download. The worker loads a pinned Pyodide runtime from jsDelivr and compresses the firmware with a JavaScript port of the reference LZSS encoder.
-
-## Development
-
-The mods are developed in the [CDJ-850 emulator project](https://github.com/FruityLemonade/cdj-850-emulator). Go there to write a new mod, change an existing one, test in the emulator or report a mod bug. This repository only packages those mods into the browser patcher.
-
-### Building the patcher site
-
-Install the [CDJ-850 SH-2A toolchain](https://github.com/FruityLemonade/cdj-850-emulator/blob/main/scripts/build/sh_elf_toolchain.sh). Put the `sh-elf-*` tools on your PATH or point `CDJ850_SH_ELF` at the toolchain prefix, for example `/opt/sh-elf/bin/sh-elf-`.
+## Build the site
 
 ```sh
-python3 sync_vendor.py ../cdj-850-emulator   # optional: take the mods from a local emulator checkout
 python3 build.py
-python3 -m http.server 8000 --directory dist
+python3 -m http.server --directory dist
 ```
 
-Open `http://localhost:8000/`. The build compiles the selectable combinations of mod payloads using the existing compiler driver. It needs no firmware file. GitHub Pages serves the static build from the `gh-pages` branch.
+The build uses the CDJ-350 profile from [FruityLemonade/cdj-850-emulator](https://github.com/FruityLemonade/cdj-850-emulator/tree/main/models). GitHub Actions refreshes the vendored tools, reports newly available CDJ-350 ports for review, and publishes the static site to GitHub Pages. A firmware mod needs a CDJ-350 implementation and CDJ-350 repacking and validation support before it can be offered here.
 
-The tools and patch definitions in `vendor/` are copies from the [CDJ-850 emulator project](https://github.com/FruityLemonade/cdj-850-emulator); `vendor/UPSTREAM` names the emulator commit. The [pages workflow](.github/workflows/pages.yml) checks the emulator's `main` branch every hour, commits any change to `vendor/`, rebuilds the payloads and publishes the site, so the patcher always ships the newest mods. A new CDJ-850 mod in the emulator shows up as a workflow warning until it is added to `OPTIONS` in `patcher.py`, the browser adapter. See [LICENSE](LICENSE).
-
-### Enabling the repack counter
-
-The footer total counts each verified firmware repack, including stock repacks. It starts at zero and increments when the download is ready. The browser sends an empty request without cookies or firmware data. The total is an estimate because the service receives reports from the browser.
-
-1. From the repository root, deploy the counter with `npx wrangler deploy --config counter/wrangler.toml` using a Cloudflare account.
-2. Set the GitHub Actions repository variable `PATCH_COUNTER_URL` to the deployed Worker URL followed by `/patches`.
-3. Run the `pages` workflow on `main` to publish the site with the configured endpoint.
-
-For local development, run `npx wrangler dev --config counter/wrangler.toml --var ALLOWED_ORIGIN:http://localhost:8000` and build the site with `PATCH_COUNTER_URL=http://localhost:8787/patches`. Builds without the variable leave the counter off.
+Derived from [CDJ-850 Mods](https://github.com/FruityLemonade/cdj-850-mods). Licensed under GPL-2.0-or-later.
