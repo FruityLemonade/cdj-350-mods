@@ -6,20 +6,38 @@ import json
 import os
 import shutil
 import sys
+from tempfile import TemporaryDirectory
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parent
 VENDOR = ROOT / "vendor"
 DIST = ROOT / "dist"
 
-sys.path[:0] = [str(VENDOR), str(VENDOR / "scripts/firmware")]
+sys.path[:0] = [str(VENDOR / subdir) for subdir in ("", "mods", "scripts/firmware")]
 from c850_repack import VERSION_OFF  # noqa: E402
 from launcher.model import load  # noqa: E402
+import payloadbuild  # noqa: E402
+from patcher import MODEL  # noqa: E402
+
+
+def package_engine(bundle):
+    payload = payloadbuild.build(["flac"], MODEL)
+    with ZipFile(bundle, "w", compression=ZIP_DEFLATED) as archive:
+        def add(name, data):
+            archive.writestr(ZipInfo(name), data, compress_type=ZIP_DEFLATED)
+
+        add("patcher.py", (ROOT / "patcher.py").read_bytes())
+        for path in sorted(VENDOR.rglob("*")):
+            if path.is_file() and path.suffix in {".py", ".conf", ".bin", ".s", ".S", ".c", ".h", ".ld"}:
+                add(path.relative_to(VENDOR).as_posix(), path.read_bytes())
+        add("payload.bin", payload.blob)
+        add("payload.json", json.dumps(payload.symbols, sort_keys=True))
 
 
 def main():
     web = ROOT / "web"
-    model = load("cdj350")
+    model = load(MODEL)
     config = {
         "model": model.title,
         "filename": model.upd[0],
@@ -30,22 +48,32 @@ def main():
     }
     stock_module = f"export default {json.dumps(config)};\n".encode("utf-8")
     assets = sorted(path for path in web.iterdir() if path.name != "index.html")
-    fingerprint = hashlib.sha256(stock_module)
-    for asset in assets:
-        fingerprint.update(asset.read_bytes())
-    key = fingerprint.hexdigest()[:12]
+    with TemporaryDirectory(dir=ROOT) as tmp:
+        staging = Path(tmp)
+        bundle = staging / "patcher.zip"
+        package_engine(bundle)
+        fingerprint = hashlib.sha256(stock_module)
+        fingerprint.update(bundle.read_bytes())
+        for asset in assets:
+            fingerprint.update(asset.read_bytes())
+        key = fingerprint.hexdigest()[:12]
 
-    # Keep retired assets from earlier builds out of the published site.
-    shutil.rmtree(DIST, ignore_errors=True)
-    output = DIST / "assets" / key
-    output.mkdir(parents=True)
-    for asset in assets:
-        shutil.copyfile(asset, output / asset.name)
-    (output / "stock.mjs").write_bytes(stock_module)
-    index = (web / "index.html").read_text(encoding="utf-8")
-    (DIST / "index.html").write_text(index.replace("__ASSET_PATH__", f"./assets/{key}"), encoding="utf-8")
-    shutil.copyfile(ROOT / "LICENSE", DIST / "LICENSE")
-    (DIST / ".nojekyll").touch()
+        output = staging / "assets" / key
+        output.mkdir(parents=True)
+        bundle.replace(output / bundle.name)
+        for asset in assets:
+            shutil.copyfile(asset, output / asset.name)
+        (output / "stock.mjs").write_bytes(stock_module)
+        index = (web / "index.html").read_text(encoding="utf-8")
+        (staging / "index.html").write_text(
+            index.replace("__ASSET_PATH__", f"./assets/{key}"), encoding="utf-8"
+        )
+        shutil.copyfile(ROOT / "LICENSE", staging / "LICENSE")
+        (staging / ".nojekyll").touch()
+
+        # Publish only after the payload and all site assets are ready.
+        shutil.rmtree(DIST, ignore_errors=True)
+        staging.replace(DIST)
     print(f"Built assets/{key}")
 
 

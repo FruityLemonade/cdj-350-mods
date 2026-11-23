@@ -2,24 +2,37 @@
 
 [Open the firmware patcher](https://fruitylemonade.github.io/cdj-350-mods/)
 
-Verify and repack the original Pioneer CDJ-350 **v1.14** firmware in your browser. There are currently no CDJ-350 firmware mods available in the patcher.
+Build an update from the original Pioneer CDJ-350 **v1.14** firmware. The optional
+**USB FLAC playback** patch supports stereo 16- or 24-bit FLAC at 44.1 or 48 kHz.
+Playback from folders and rekordbox USB exports, and updating from v1.14 to the
+patched v1.15 build, were verified in the CDJ-350 emulator. Physical deck
+validation is pending.
 
-## Repack the stock firmware
+## Build an update in the browser
 
 1. Get the CDJ-350 v1.14 update from [AlphaTheta's firmware downloads](https://pioneer-support.zendesk.com/hc/en-us/articles/11949537649305-Firmware) and extract `C350MAIN.UPD`.
-2. Open the patcher and choose `C350MAIN.UPD`. The patcher checks it against the SHA-256 of the original update. Your file stays in the browser.
-3. The output version defaults to `1.15`. Enter `1.14` for a byte-for-byte copy, or use another version label in the form `D.DD`. The label is the only field the repacker changes.
-4. Select **Repack firmware**, then download `C350MAIN.UPD`.
+2. Choose the original file in the patcher. It checks the official SHA-256 and works on your local copy in the browser.
+3. Select **USB FLAC playback** to apply the patch. The output version defaults to `1.15`. For a byte-for-byte stock copy, clear the checkbox and enter `1.14`.
+4. Select **Patch firmware** or **Repack firmware**, then download `C350MAIN.UPD`.
 
-Keep the original update and follow the [official CDJ-350 update guide](https://downloads.support.alphatheta.com/firmwares/dj-players/CDJ-350/CDJ-350_update_guide_en.pdf) for installation. Repacked files have been checked byte-for-byte in the browser. Flashing a relabelled update has not been verified on hardware.
+Keep the original update and use the [official CDJ-350 update guide](https://downloads.support.alphatheta.com/firmwares/dj-players/CDJ-350/CDJ-350_update_guide_en.pdf) for the deck's update procedure.
 
-## Build the site
+## Build the site locally
+
+Build the emulator project's SH-2A toolchain with
+`scripts/build/sh_elf_toolchain.sh`. Point the website build at its
+`sh-elf-` prefix.
 
 ```sh
-python3 build.py
+CDJ850_SH_ELF=/path/to/tools/sh-elf/bin/sh-elf- python3 build.py
 python3 -m http.server --directory dist
 ```
 
-The build uses the CDJ-350 profile from [FruityLemonade/cdj-850-emulator](https://github.com/FruityLemonade/cdj-850-emulator/tree/main/models). GitHub Actions refreshes the vendored tools, reports newly available CDJ-350 ports for review, and publishes the static site to GitHub Pages. A firmware mod needs a CDJ-350 implementation and CDJ-350 repacking and validation support before it can be offered here.
+The build packages the compiled FLAC payload and the emulator project's patch and
+validation tools. No firmware file is needed to build the site. The browser worker
+loads Pyodide for the patch engine. The stock repacker runs directly in JavaScript.
+
+GitHub Actions refreshes the vendored tools and publishes the static site to
+GitHub Pages. Sync preserves the working FLAC port while upstream is missing it.
 
 Derived from [CDJ-850 Mods](https://github.com/FruityLemonade/cdj-850-mods). Licensed under GPL-2.0-or-later.

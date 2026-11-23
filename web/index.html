@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Verify and repack the original Pioneer CDJ-350 v1.14 firmware in your browser.">
+  <meta name="description" content="Add USB FLAC playback to the original Pioneer CDJ-350 v1.14 firmware in your browser.">
   <meta name="theme-color" content="#171819">
   <title>CDJ-350 Firmware Patcher</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171819'/%3E%3Cpath d='M7 16h18M16 7v18' fill='none' stroke='%23ffb455' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ffb455'/%3E%3C/svg%3E">
@@ -21,7 +21,7 @@
       <div class="intro">
         <div>
           <h1>Firmware Patcher</h1>
-          <p>Verify and repack an original Pioneer CDJ-350 update. You can keep the stock version or change the version label.</p>
+          <p>Add USB FLAC playback to an original Pioneer CDJ-350 update, or repack it with a different version label.</p>
         </div>
         <div class="compatibility">
           <span class="label">Supported firmware</span>
@@ -55,14 +55,20 @@
               <span class="step" aria-hidden="true">02</span>
               <h2 id="mods-heading">Modifications</h2>
             </div>
-            <p class="section-note">No firmware mods are available for the CDJ-350 yet.</p>
+            <div class="mod-option">
+              <input type="checkbox" id="flac" aria-describedby="flac-help">
+              <div>
+                <label for="flac">USB FLAC playback</label>
+                <p id="flac-help">Stereo FLAC, 16 or 24 bit, 44.1 or 48 kHz. Tested in the CDJ-350 emulator.</p>
+              </div>
+            </div>
           </section>
         </div>
 
         <section class="panel output" aria-labelledby="output-heading">
           <div class="panel-heading">
             <span class="step" aria-hidden="true">03</span>
-            <h2 id="output-heading">Repack &amp; download</h2>
+            <h2 id="output-heading">Build &amp; download</h2>
           </div>
           <dl>
             <div><dt>Input</dt><dd id="input-summary">Awaiting file</dd></div>
@@ -72,7 +78,7 @@
           <p class="version-help" id="version-help">Use one digit, a dot and two digits. Enter <code>1.14</code> for an exact copy of the original file.</p>
           <div class="warning">
             <strong>Installing firmware</strong>
-            <p>Keep the original update. Follow the <a href="https://downloads.support.alphatheta.com/firmwares/dj-players/CDJ-350/CDJ-350_update_guide_en.pdf">official CDJ-350 update guide</a>. Relabelled updates have not been tested on hardware.</p>
+            <p>Keep the original update. Follow the <a href="https://downloads.support.alphatheta.com/firmwares/dj-players/CDJ-350/CDJ-350_update_guide_en.pdf">official CDJ-350 update guide</a>. Modified firmware has been tested in the emulator only.</p>
           </div>
           <button class="button primary" type="button" id="build" disabled>Repack firmware</button>
           <a class="button primary" id="download" download="C350MAIN.UPD" hidden>Download C350MAIN.UPD</a>

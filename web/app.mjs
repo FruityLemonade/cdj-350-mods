@@ -6,6 +6,7 @@ const picker = get("firmware");
 const pick = get("pick");
 const dropzone = get("dropzone");
 const version = get("version");
+const flac = get("flac");
 const build = get("build");
 const download = get("download");
 const patchCount = get("patch-count");
@@ -14,6 +15,7 @@ let input = null;
 let checking = false;
 let fileAttempt = 0;
 let downloadUrl = null;
+let activeWorker = null;
 let displayedPatchCount = -1;
 
 function status(message, tone = "") {
@@ -35,7 +37,7 @@ async function updatePatchCount(method) {
     // A delayed read or earlier write can arrive after a newer total.
     if (!Number.isSafeInteger(count) || count <= displayedPatchCount) return;
     displayedPatchCount = count;
-    patchCount.textContent = `${count.toLocaleString()} firmware ${count === 1 ? "repack" : "repacks"} completed`;
+    patchCount.textContent = `${count.toLocaleString()} firmware ${count === 1 ? "build" : "builds"} completed`;
     patchCount.hidden = false;
   } catch {
     // The counter is independent of the firmware download.
@@ -43,6 +45,10 @@ async function updatePatchCount(method) {
 }
 
 function resetDownload() {
+  if (activeWorker) {
+    activeWorker.terminate();
+    activeWorker = null;
+  }
   if (downloadUrl) URL.revokeObjectURL(downloadUrl);
   downloadUrl = null;
   download.removeAttribute("href");
@@ -51,14 +57,22 @@ function resetDownload() {
 }
 
 function renderControls() {
-  const invalid = !validVersion(version.value);
+  const badFormat = !validVersion(version.value);
+  const sameVersion = flac.checked && version.value === stock.stockVersion;
+  const invalid = badFormat || sameVersion;
+  const versionHelp = get("version-help");
+  versionHelp.textContent = flac.checked
+    ? `Choose a version that differs from stock v${stock.stockVersion}.`
+    : `Enter ${stock.stockVersion} for an exact copy of the original file.`;
+  build.textContent = flac.checked ? "Patch firmware" : "Repack firmware";
   get("input-summary").textContent = input ? `Verified v${stock.stockVersion}` : checking ? "Verifying…" : "Awaiting file";
   version.setAttribute("aria-invalid", String(invalid));
-  build.disabled = !input || invalid;
-  if (!downloadUrl) {
-    if (invalid) status("Enter a version like 1.15.", "error");
+  build.disabled = !input || invalid || activeWorker !== null;
+  if (!downloadUrl && !activeWorker) {
+    if (badFormat) status("Enter a version like 1.15.", "error");
+    else if (sameVersion) status("Choose a different output version for the FLAC update.", "error");
     else if (!input) status("Choose an original firmware file.");
-    else status("Ready to repack stock firmware.");
+    else status(flac.checked ? "Ready to add USB FLAC playback." : "Ready to repack stock firmware.");
   }
 }
 
@@ -122,23 +136,54 @@ dropzone.addEventListener("drop", (event) => {
   dropzone.classList.remove("dragging");
   chooseFile(event.dataTransfer.files[0]);
 });
-version.addEventListener("input", () => {
+function optionsChanged() {
   resetDownload();
   renderControls();
-});
+}
 
-build.addEventListener("click", () => {
-  const label = version.value;
-  if (!input || !validVersion(label)) return;
+version.addEventListener("input", optionsChanged);
+flac.addEventListener("change", optionsChanged);
 
-  const output = repackStock(input, label);
+function offerDownload(output, label, patched) {
   downloadUrl = URL.createObjectURL(new Blob([output], { type: "application/octet-stream" }));
   download.href = downloadUrl;
   build.hidden = true;
   download.hidden = false;
-  status(`Firmware v${label} repacked and verified.`, "success");
+  status(patched ? `Firmware v${label} with USB FLAC is ready.` : `Firmware v${label} repacked and verified.`, "success");
   download.focus();
   void updatePatchCount("POST");
+}
+
+build.addEventListener("click", () => {
+  const label = version.value;
+  if (build.disabled || !input) return;
+  if (!flac.checked) {
+    offerDownload(repackStock(input, label), label, false);
+    return;
+  }
+
+  const worker = new Worker(new URL("./worker.mjs", import.meta.url), { type: "module" });
+  activeWorker = worker;
+  renderControls();
+  status("Loading the patching engine…");
+
+  function finish(error, output) {
+    if (activeWorker !== worker) return;
+    worker.terminate();
+    activeWorker = null;
+    renderControls();
+    if (error) status(error, "error");
+    else offerDownload(output, label, true);
+  }
+
+  worker.addEventListener("message", ({ data }) => {
+    if (activeWorker !== worker) return;
+    if (data.type === "progress") status(data.message);
+    if (data.type === "done") finish(null, data.output);
+    if (data.type === "error") finish(data.message);
+  });
+  worker.addEventListener("error", () => finish("The patching engine could not load. Try again."));
+  worker.postMessage({ input, version: label });
 });
 
 renderControls();

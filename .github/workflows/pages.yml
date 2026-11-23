@@ -53,9 +53,23 @@ jobs:
             exit 0
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
+      - name: Cache the SH-2A toolchain
+        id: sh-toolchain
+        if: steps.sync.outputs.publish == 'true' || github.ref != 'refs/heads/main'
+        uses: actions/cache@v4
+        with:
+          path: upstream/tools/sh-elf
+          key: sh-elf-${{ runner.os }}-${{ hashFiles('upstream/scripts/build/sh_elf_toolchain.sh') }}
+      - name: Build the SH-2A toolchain
+        if: (steps.sync.outputs.publish == 'true' || github.ref != 'refs/heads/main') && steps.sh-toolchain.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential zlib1g-dev
+          upstream/scripts/build/sh_elf_toolchain.sh
       - name: Build the site
         if: steps.sync.outputs.publish == 'true' || github.ref != 'refs/heads/main'
         env:
+          CDJ850_SH_ELF: ${{ github.workspace }}/upstream/tools/sh-elf/bin/sh-elf-
           PATCH_COUNTER_URL: ${{ vars.PATCH_COUNTER_URL }}
         run: python3 build.py
       - uses: actions/upload-pages-artifact@v4

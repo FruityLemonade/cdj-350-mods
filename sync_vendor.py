@@ -18,11 +18,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 VENDOR = ROOT / "vendor"
 TREES = ("launcher", "models", "mods", "scripts/firmware")
-SKIP_NAMES = {"Makefile", "__pycache__", ".DS_Store"}
+SKIP_NAMES = {"Makefile", "__pycache__", ".DS_Store", "build"}
 SKIP_SUFFIXES = {".md", ".pyc"}
 MODEL = "cdj350"
 # Support code and developer tools need no review as user-selectable mods.
-NOT_OFFERED = {"loader", "payload", "players", "bpm_probe", "dsp_probe", "payload_demo"}
+OFFERED = {"flac"}
+NOT_OFFERED = OFFERED | {"loader", "payload", "players", "bpm_probe", "dsp_probe", "payload_demo"}
 
 
 def wanted(path):
@@ -54,6 +55,15 @@ def main():
             sys.exit(f"{upstream} has no {tree}/; is it a cdj-850-emulator checkout?")
     commit = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
                             check=True, capture_output=True, text=True).stdout.strip()
+
+    for name in OFFERED:
+        mod = Path("mods") / name
+        if ((VENDOR / mod / MODEL / "patch.py").is_file()
+                and not (upstream / mod / MODEL / "patch.py").is_file()):
+            # Scheduled sync can follow a main branch that predates this port.
+            print(f"::notice title=Vendor sync deferred::Upstream does not have the offered {MODEL} {name} port yet.")
+            print("unchanged")
+            return
 
     before = snapshot(VENDOR)
     recorded = before.pop("UPSTREAM", None)
