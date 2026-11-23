@@ -14,13 +14,13 @@ from patch_update import conf_rows
 MODEL = "cdj850"
 OPTIONS = {
     "tempo_wide": ("USB WIDE tempo", "Enable ±100% tempo on USB. TEMPO cycles ±6% → ±10% → ±16% → WIDE, as on a CD."),
-    "flac": ("USB FLAC playback", "Experimental: plays stereo 16-bit, 44.1 kHz FLAC files. Holding SEARCH or spinning the jog fast can drop the sound for a moment."),
+    "flac": ("USB FLAC playback", "Experimental USB playback for stereo FLAC at 16 or 24 bits and 44.1 or 48 kHz. Audio can drop out during fast searching or jog moves."),
     "hot_cues": ("Hot cues", "Use BEAT 1, 2 and 4 for hot cues A–C, read from and saved to rekordbox. Hold BEAT 8 and press one to delete it. Toggle with BEAT SELECT + RELOOP. Unfinished: a jump takes a few seconds."),
     "quant_loops": ("Quantized loops", "Snap loops (and new hot cues) to the nearest beat of the rekordbox grid. Toggle with BEAT SELECT + LOOP IN."),
     "loop_resize": ("Loop resize", "While a loop plays, use CUE/LOOP CALL to halve or double its length."),
     "bpm999": ("BPM up to 999", "Raise the tempo ceiling for rekordbox grids and the panel display."),
     "bpm_decimals": ("BPM decimals", "Show the actual BPM to two decimal places in place of the rekordbox BPM in the INFO view, on grid tracks."),
-    "info_order": ("INFO screen order", "Reorder the INFO screens for USB tracks: Track, BPM and Camelot key (e.g. 128.23 12A), waveform / Artist, Rating, Key / Album, Comment."),
+    "info_order": ("INFO screen order", "Show playing BPM, Camelot key and rekordbox rating beneath the USB track title (e.g. 128.23 12A *****). Turn the jog in INFO to see Artist, Rating and Key, then Album and Comment."),
     "auto_standby": ("20-minute auto standby", "Shorten the idle timeout to 20 minutes when AUTO STANDBY is enabled."),
 }
 

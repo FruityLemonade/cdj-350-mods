@@ -5,15 +5,15 @@
 Custom firmware for the Pioneer CDJ-850. Pick the mods you want in the browser and download a ready-to-install update file.
 
 > [!WARNING]
-> These custom builds are tested on physical decks. However when installing custom firmware, there's always a risk of something going wrong. Installing one can cause playback problems or leave the deck unable to boot. Keep an original update file so you can recover.
+> Custom firmware can cause playback problems or leave the deck unable to boot. The expanded FLAC formats and INFO rating display have been tested in the emulator and still need verification on a physical deck. Keep the original update for recovery.
 
 ## How to use it
 
 1. Get the original Pioneer CDJ-850 **v1.13** update file, `C850MAIN.UPD`.
 2. Open the [patcher](https://fruitylemonade.github.io/cdj-850-mods/) and choose that file.
 3. Tick the mods you want (see the table below).
-4. Enter a version number for the new firmware in `D.DD` format, for example `1.14`.
-5. Download the patched update and install it on the deck the usual way.
+4. Enter a version number in `D.DD` format. Use `0.13` if you want to reinstall modded builds with the same label and restore stock directly from the original `1.13` file. The patcher defaults to `1.14`. The USB updater skips a matching `1.xx` version.
+5. Download `C850MAIN.UPD` and copy it to the root of a FAT32 USB stick. Power on the deck while holding **USB SELECT + RELOOP**. Insert the stick when prompted. Once the display shows **COMPLETE!**, turn the deck off and back on.
 
 Your firmware file never leaves your computer. All the patching happens in the browser.
 
@@ -24,23 +24,18 @@ All mods are off until you tick them, and you can combine them freely.
 | Mod | What it does | How to use it on the deck |
 |---|---|---|
 | **USB WIDE tempo** | Gives you ±100% tempo for USB tracks. | Press **TEMPO** to step through ±6%, ±10%, ±16% and **WIDE**, the same cycle as on a CD. |
-| **USB FLAC playback** *experimental* | Plays FLAC files from USB. Only stereo, 16/24-bit, 44.1/48 kHz files are supported; other FLAC files are listed but won't play. FLAC takes much more work for the deck than WAV, so holding **SEARCH** or spinning the jog fast through a FLAC track can drop the sound for a moment while it catches up. | Load a FLAC file like any other track. |
+| **USB FLAC playback** *experimental* | Plays stereo FLAC from USB at 16 or 24 bits and 44.1 or 48 kHz. The deck resamples 48 kHz audio to 44.1 kHz and uses the upper 16 bits of 24-bit audio, as it does for WAV. The decoder is faster than before, but holding **SEARCH** or moving the jog quickly can still cause brief audio dropouts. | Load a supported FLAC file like any other track. |
 | **Hot cues** *unfinished* | Turns **BEAT 1**, **2** and **4** into hot cues A, B and C. Reads the hot cues you set in rekordbox, and saves new ones back to the USB stick. The beat LEDs show which slots are set (lit) and which are empty (blinking). With **Quantized loops** on, a new cue lands on the nearest beat. | Press **BEAT SELECT + RELOOP** to switch hot-cue mode on or off (the display shows HOT CUE ON/OFF, and the setting is saved). Press a pad to jump to its cue, or to set one if the slot is empty. Hold **BEAT 8** and press a pad to delete its cue. *Not ready for live use yet: a jump takes a few seconds, because the deck first reads about 5 seconds of audio from the stick (the same wait as calling a memory cue).* |
 | **Quantized loops** | Makes loops snap to the nearest beat of the rekordbox grid, behind or ahead: auto beat loops, LOOP IN and LOOP OUT. Loops stay in time however many times they repeat. Needs USB tracks analysed in rekordbox. | Press **BEAT SELECT + LOOP IN** to switch quantize on or off (the display shows QUANTIZE ON/OFF, and the setting is saved). |
 | **Loop resize** | Halves or doubles a playing loop, following the beat grid when the track has one. | While a loop plays, press **CUE/LOOP CALL ◀** to halve it or **CALL ▶** to double it. Outside a loop the buttons work as normal. |
 | **BPM up to 999** | Raises the BPM limit from 180 to 999, for both rekordbox beat grids and the BPM display. Useful for very fast genres. | Nothing to do. Fast tracks just show and play with their real BPM. |
 | **BPM decimals** | Shows the actual BPM to two decimal places, for example `132.25`, in place of the rekordbox BPM. | Open the **INFO** view on a track with a beat grid. |
-| **INFO screen order** | Reorders the INFO screens for USB tracks: Track, the playing BPM with the key in Camelot notation (for example `128.23 12A`), waveform / Artist, Rating, Key / Album, Comment. With **MASTER TEMPO** off, the key follows the pitch. With **BPM decimals** in the build, the BPM is the beat-grid value. | Press **INFO** on a USB track and turn the jog to page through the screens. |
+| **INFO screen order** | Shows the playing BPM, Camelot key and rekordbox rating under the USB track title (for example `128.23 12A *****`). One asterisk represents one star. With **MASTER TEMPO** off, the key follows the pitch to the nearest semitone. With **BPM decimals** enabled and a beat grid available, the playing BPM follows the current beat's tempo. | Press **INFO** on a USB track with BPM metadata. The first page shows the title, the combined row and the waveform. Turn the jog for Artist, Rating and Key, then Album and Comment. |
 | **20-minute auto standby** | Puts the deck into standby after 20 minutes without use, instead of 4 hours. | Turn on **AUTO STANDBY** in the **UTILITY** menu. |
 
 ## Going back to stock firmware
 
-1. Open the patcher and choose the original v1.13 file.
-2. Leave every mod unticked.
-3. Enter a version **higher** than the one on the deck. For example, use `1.15` on a deck running `1.14`. The deck's updater may skip a file whose version matches what is already installed.
-4. Download and install it.
-
-The stock firmware is copied byte for byte. Only the version number changes.
+Install the original `C850MAIN.UPD` (v1.13) using the USB update procedure above. If the deck already shows `1.13` for a modded build, the updater will skip the original file. Open the patcher with the original v1.13 file, leave every mod unticked, and export with a different label such as `1.14`. Repacking with zero mods preserves the original firmware and changes the version label.
 
 ## How it works
 
