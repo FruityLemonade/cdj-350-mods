@@ -1,0 +1,16 @@
+name = "cdj850-patch-counter"
+main = "worker.mjs"
+compatibility_date = "2026-11-23"
+workers_dev = true
+preview_urls = false
+
+[vars]
+ALLOWED_ORIGIN = "https://fruitylemonade.github.io"
+
+[[durable_objects.bindings]]
+name = "PATCH_COUNTER"
+class_name = "PatchCounter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PatchCounter"]

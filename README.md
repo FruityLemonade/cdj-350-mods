@@ -58,3 +58,13 @@ python3 -m http.server 8000 --directory dist
 Open `http://localhost:8000/`. The build compiles the selectable combinations of mod payloads using the existing compiler driver. It needs no firmware file. GitHub Pages serves the static build from the `gh-pages` branch.
 
 The tools and patch definitions in `vendor/` are copies from the [CDJ-850 emulator project](https://github.com/FruityLemonade/cdj-850-emulator); `vendor/UPSTREAM` names the emulator commit. The [pages workflow](.github/workflows/pages.yml) checks the emulator's `main` branch every hour, commits any change to `vendor/`, rebuilds the payloads and publishes the site, so the patcher always ships the newest mods. A new CDJ-850 mod in the emulator shows up as a workflow warning until it is added to `OPTIONS` in `patcher.py`, the browser adapter. See [LICENSE](LICENSE).
+
+### Enabling the repack counter
+
+The footer total counts each verified firmware repack, including stock repacks. It starts at zero and increments when the download is ready. The browser sends an empty request without cookies or firmware data. The total is an estimate because the service receives reports from the browser.
+
+1. From the repository root, deploy the counter with `npx wrangler deploy --config counter/wrangler.toml` using a Cloudflare account.
+2. Set the GitHub Actions repository variable `PATCH_COUNTER_URL` to the deployed Worker URL followed by `/patches`.
+3. Run the `pages` workflow on `main` to publish the site with the configured endpoint.
+
+For local development, run `npx wrangler dev --config counter/wrangler.toml --var ALLOWED_ORIGIN:http://localhost:8000` and build the site with `PATCH_COUNTER_URL=http://localhost:8787/patches`. Builds without the variable leave the counter off.

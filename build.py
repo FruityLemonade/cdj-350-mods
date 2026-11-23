@@ -3,6 +3,7 @@
 """Compile mod payloads and prepare a static site. No firmware input is needed."""
 import hashlib
 import json
+import os
 import shutil
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -49,11 +50,23 @@ def main():
         if name.parts[0] == "mods" and len(name.parts) > 2 and name.parts[1] not in mod_dirs:
             continue
         sources.append((path, name.as_posix()))
+    model = load(patcher.MODEL)
+    config = {
+        "stockVersion": model.fw_version,
+        "stockHash": model.upd_sha256[0],
+        "counterUrl": os.environ.get("PATCH_COUNTER_URL", "").strip(),
+        "options": [
+            {"id": name, "title": title, "description": description}
+            for name, (title, description) in patcher.OPTIONS.items()
+        ],
+    }
+    stock_module = f"export default {json.dumps(config)};\n".encode("utf-8")
     DIST.mkdir(exist_ok=True)
     bundle = DIST / "patcher.zip"
     package_engine(bundle, sources)
     assets = sorted(path for path in web.iterdir() if path.name != "index.html")
     fingerprint = hashlib.sha256(bundle.read_bytes())
+    fingerprint.update(stock_module)
     for asset in assets:
         fingerprint.update(asset.read_bytes())
     key = fingerprint.hexdigest()[:12]
@@ -62,17 +75,7 @@ def main():
     bundle.replace(output / bundle.name)
     for asset in assets:
         shutil.copyfile(asset, output / asset.name)
-
-    model = load(patcher.MODEL)
-    config = {
-        "stockVersion": model.fw_version,
-        "stockHash": model.upd_sha256[0],
-        "options": [
-            {"id": name, "title": title, "description": description}
-            for name, (title, description) in patcher.OPTIONS.items()
-        ],
-    }
-    (output / "stock.mjs").write_text(f"export default {json.dumps(config)};\n", encoding="utf-8")
+    (output / "stock.mjs").write_bytes(stock_module)
     index = (web / "index.html").read_text(encoding="utf-8")
     (DIST / "index.html").write_text(index.replace("__ASSET_PATH__", f"./assets/{key}"), encoding="utf-8")
     shutil.copyfile(ROOT / "LICENSE", DIST / "LICENSE")

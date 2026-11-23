@@ -99,6 +99,7 @@ jobs:
       - name: Build the site
         env:
           CDJ850_SH_ELF: ${{ github.workspace }}/upstream/tools/sh-elf/bin/sh-elf-
+          PATCH_COUNTER_URL: ${{ vars.PATCH_COUNTER_URL }}
         run: python3 build.py
       - uses: actions/upload-artifact@v4
         with:
