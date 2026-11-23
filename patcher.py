@@ -14,7 +14,7 @@ from patch_update import conf_rows
 MODEL = "cdj850"
 OPTIONS = {
     "tempo_wide": ("USB WIDE tempo", "Enable ±100% tempo on USB. TEMPO cycles ±6% → ±10% → ±16% → WIDE, as on a CD."),
-    "flac": ("USB FLAC playback", "Experimental USB playback for stereo FLAC at 16 or 24 bits and 44.1 or 48 kHz. Audio can drop out during fast searching or jog moves."),
+    "flac": ("USB FLAC playback", "Play stereo FLAC files from USB at 16 or 24 bits and 44.1 or 48 kHz."),
     "hot_cues": ("Hot cues", "Use BEAT 1, 2 and 4 for hot cues A–C, read from and saved to rekordbox. Hold BEAT 8 and press one to delete it. Toggle with BEAT SELECT + RELOOP. Unfinished: a jump takes a few seconds."),
     "quant_loops": ("Quantized loops", "Snap loops (and new hot cues) to the nearest beat of the rekordbox grid. Toggle with BEAT SELECT + LOOP IN."),
     "loop_resize": ("Loop resize", "While a loop plays, use CUE/LOOP CALL to halve or double its length."),

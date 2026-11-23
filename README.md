@@ -5,7 +5,7 @@
 Custom firmware for the Pioneer CDJ-850. Pick the mods you want in the browser and download a ready-to-install update file.
 
 > [!WARNING]
-> Custom firmware can cause playback problems or leave the deck unable to boot. The expanded FLAC formats and INFO rating display have been tested in the emulator and still need verification on a physical deck. Keep the original update for recovery.
+> Custom firmware can cause playback problems or leave the deck unable to boot. The INFO rating display has been tested in the emulator and still needs verification on a physical deck. Keep the original update for recovery.
 
 ## How to use it
 
@@ -24,7 +24,7 @@ All mods are off until you tick them, and you can combine them freely.
 | Mod | What it does | How to use it on the deck |
 |---|---|---|
 | **USB WIDE tempo** | Gives you ±100% tempo for USB tracks. | Press **TEMPO** to step through ±6%, ±10%, ±16% and **WIDE**, the same cycle as on a CD. |
-| **USB FLAC playback** *experimental* | Plays stereo FLAC from USB at 16 or 24 bits and 44.1 or 48 kHz. The deck resamples 48 kHz audio to 44.1 kHz and uses the upper 16 bits of 24-bit audio, as it does for WAV. The decoder is faster than before, but holding **SEARCH** or moving the jog quickly can still cause brief audio dropouts. | Load a supported FLAC file like any other track. |
+| **USB FLAC playback** | Plays stereo FLAC from USB at 16 or 24 bits and 44.1 or 48 kHz. The deck resamples 48 kHz audio to 44.1 kHz and uses the upper 16 bits of 24-bit audio, as it does for WAV. | Load and seek through a FLAC track as you would any other track. |
 | **Hot cues** *unfinished* | Turns **BEAT 1**, **2** and **4** into hot cues A, B and C. Reads the hot cues you set in rekordbox, and saves new ones back to the USB stick. The beat LEDs show which slots are set (lit) and which are empty (blinking). With **Quantized loops** on, a new cue lands on the nearest beat. | Press **BEAT SELECT + RELOOP** to switch hot-cue mode on or off (the display shows HOT CUE ON/OFF, and the setting is saved). Press a pad to jump to its cue, or to set one if the slot is empty. Hold **BEAT 8** and press a pad to delete its cue. *Not ready for live use yet: a jump takes a few seconds, because the deck first reads about 5 seconds of audio from the stick (the same wait as calling a memory cue).* |
 | **Quantized loops** | Makes loops snap to the nearest beat of the rekordbox grid, behind or ahead: auto beat loops, LOOP IN and LOOP OUT. Loops stay in time however many times they repeat. Needs USB tracks analysed in rekordbox. | Press **BEAT SELECT + LOOP IN** to switch quantize on or off (the display shows QUANTIZE ON/OFF, and the setting is saved). |
 | **Loop resize** | Halves or doubles a playing loop, following the beat grid when the track has one. | While a loop plays, press **CUE/LOOP CALL ◀** to halve it or **CALL ▶** to double it. Outside a loop the buttons work as normal. |
