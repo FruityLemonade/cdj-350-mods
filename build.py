@@ -6,8 +6,9 @@ import json
 import os
 import shutil
 import sys
-from tempfile import TemporaryDirectory
+from itertools import combinations
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parent
@@ -17,22 +18,33 @@ DIST = ROOT / "dist"
 sys.path[:0] = [str(VENDOR / subdir) for subdir in ("", "mods", "scripts/firmware")]
 from c850_repack import VERSION_OFF  # noqa: E402
 from launcher.model import load  # noqa: E402
+import patcher  # noqa: E402
 import payloadbuild  # noqa: E402
 from patcher import MODEL  # noqa: E402
 
 
 def package_engine(bundle):
-    payload = payloadbuild.build(["flac"], MODEL)
+    payload_mods = sorted(set(patcher.OPTIONS) & set(payloadbuild.payload_mods(MODEL)))
+    groups = [group for count in range(1, len(payload_mods) + 1)
+              for group in combinations(payload_mods, count)]
+    mod_dirs = patcher.OPTIONS.keys() | {"loader", "payload", "players"}
     with ZipFile(bundle, "w", compression=ZIP_DEFLATED) as archive:
         def add(name, data):
             archive.writestr(ZipInfo(name), data, compress_type=ZIP_DEFLATED)
 
         add("patcher.py", (ROOT / "patcher.py").read_bytes())
         for path in sorted(VENDOR.rglob("*")):
-            if path.is_file() and path.suffix in {".py", ".conf", ".bin", ".s", ".S", ".c", ".h", ".ld"}:
-                add(path.relative_to(VENDOR).as_posix(), path.read_bytes())
-        add("payload.bin", payload.blob)
-        add("payload.json", json.dumps(payload.symbols, sort_keys=True))
+            if not path.is_file() or path.suffix not in {".py", ".conf", ".bin", ".s", ".S", ".c", ".h", ".ld"}:
+                continue
+            rel = path.relative_to(VENDOR)
+            if rel.parts[0] == "mods" and len(rel.parts) > 2 and rel.parts[1] not in mod_dirs:
+                continue
+            add(rel.as_posix(), path.read_bytes())
+        for group in groups:
+            payload = payloadbuild.build(group, MODEL)
+            key = "payloads/" + "+".join(group)
+            add(key + ".bin", payload.blob)
+            add(key + ".json", json.dumps(payload.symbols, sort_keys=True))
 
 
 def main():

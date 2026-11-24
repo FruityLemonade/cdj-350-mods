@@ -22,7 +22,7 @@ SKIP_NAMES = {"Makefile", "__pycache__", ".DS_Store", "build"}
 SKIP_SUFFIXES = {".md", ".pyc"}
 MODEL = "cdj350"
 # Support code and developer tools need no review as user-selectable mods.
-OFFERED = {"flac"}
+OFFERED = {"flac", "quant_loops"}
 NOT_OFFERED = OFFERED | {"loader", "payload", "players", "bpm_probe", "dsp_probe", "payload_demo"}
 
 

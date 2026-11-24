@@ -6,7 +6,7 @@ const picker = get("firmware");
 const pick = get("pick");
 const dropzone = get("dropzone");
 const version = get("version");
-const flac = get("flac");
+const modBoxes = [...document.querySelectorAll('#mods-panel input[type="checkbox"]')];
 const build = get("build");
 const download = get("download");
 const patchCount = get("patch-count");
@@ -56,23 +56,29 @@ function resetDownload() {
   build.hidden = false;
 }
 
+function selectedMods() {
+  return modBoxes.filter((box) => box.checked).map((box) => box.value);
+}
+
 function renderControls() {
+  const selections = selectedMods();
+  const hasMods = selections.length > 0;
   const badFormat = !validVersion(version.value);
-  const sameVersion = flac.checked && version.value === stock.stockVersion;
+  const sameVersion = hasMods && version.value === stock.stockVersion;
   const invalid = badFormat || sameVersion;
   const versionHelp = get("version-help");
-  versionHelp.textContent = flac.checked
+  versionHelp.textContent = hasMods
     ? `Choose a version that differs from stock v${stock.stockVersion}.`
     : `Enter ${stock.stockVersion} for an exact copy of the original file.`;
-  build.textContent = flac.checked ? "Patch firmware" : "Repack firmware";
+  build.textContent = hasMods ? "Patch firmware" : "Repack firmware";
   get("input-summary").textContent = input ? `Verified v${stock.stockVersion}` : checking ? "Verifying…" : "Awaiting file";
   version.setAttribute("aria-invalid", String(invalid));
   build.disabled = !input || invalid || activeWorker !== null;
   if (!downloadUrl && !activeWorker) {
     if (badFormat) status("Enter a version like 1.15.", "error");
-    else if (sameVersion) status("Choose a different output version for the FLAC update.", "error");
+    else if (sameVersion) status("Choose a different output version for the patched update.", "error");
     else if (!input) status("Choose an original firmware file.");
-    else status(flac.checked ? "Ready to add USB FLAC playback." : "Ready to repack stock firmware.");
+    else status(hasMods ? `Ready to apply ${selections.length} ${selections.length === 1 ? "modification" : "modifications"}.` : "Ready to repack stock firmware.");
   }
 }
 
@@ -142,22 +148,23 @@ function optionsChanged() {
 }
 
 version.addEventListener("input", optionsChanged);
-flac.addEventListener("change", optionsChanged);
+for (const box of modBoxes) box.addEventListener("change", optionsChanged);
 
 function offerDownload(output, label, patched) {
   downloadUrl = URL.createObjectURL(new Blob([output], { type: "application/octet-stream" }));
   download.href = downloadUrl;
   build.hidden = true;
   download.hidden = false;
-  status(patched ? `Firmware v${label} with USB FLAC is ready.` : `Firmware v${label} repacked and verified.`, "success");
+  status(patched ? `Patched firmware v${label} is ready.` : `Firmware v${label} repacked and verified.`, "success");
   download.focus();
   void updatePatchCount("POST");
 }
 
 build.addEventListener("click", () => {
   const label = version.value;
+  const selections = selectedMods();
   if (build.disabled || !input) return;
-  if (!flac.checked) {
+  if (!selections.length) {
     offerDownload(repackStock(input, label), label, false);
     return;
   }
@@ -183,7 +190,7 @@ build.addEventListener("click", () => {
     if (data.type === "error") finish(data.message);
   });
   worker.addEventListener("error", () => finish("The patching engine could not load. Try again."));
-  worker.postMessage({ input, version: label });
+  worker.postMessage({ input, selections, version: label });
 });
 
 renderControls();

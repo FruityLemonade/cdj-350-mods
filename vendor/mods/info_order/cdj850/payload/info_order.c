@@ -66,7 +66,9 @@
 #define IO_RATED_ROW_MAX    16                   /* full BPM, Camelot key and five stars */
 
 /* The wanted order; codes not named here follow in their stock order. */
-static const u8 io_order[] = { 0x04 /* title */, 0x0D /* BPM */, 0x07 /* artist */, IO_CODE_RATING,
+static const u8 io_order[] = { 0x04 /* title */, 0x0D /* BPM */,
+                               0x13, 0x14, 0x15 /* phase_meter Page 2 */,
+                               0x07 /* artist */, IO_CODE_RATING,
                                0x0F /* key */, 0x02 /* album */, 0x23 /* comment */ };
 
 volatile u32 info_order_on = 1;        /* run-time switch: 0 = stock */
@@ -329,7 +331,7 @@ static void io_title_row(void)
     volatile u8 *src = (volatile u8 *)IO_ROW_SOURCE(1);
     u8 text[IO_TEXT_MAX];
     u32 rec, x100;
-    s32 pitch = C850_PITCH;
+    s32 pitch = c850_effective_pitch();
     int i, len, same, bpm_ok;
 
     if (IO_DISPLAY_MODE != IO_MODE_TITLE || (row[1] != IO_CODE_ARTIST && row[1] != IO_CODE_BPM))

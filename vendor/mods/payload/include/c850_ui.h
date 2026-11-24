@@ -42,18 +42,28 @@
 extern u16 c850_ui_kt[3];                       /* K0..K2 as the remap built them (true held state) */
 u32 c850_ui_keys(void);
 int c850_ui_shift(const u16 *k, const u16 *p, u16 *own, u16 key_k0);
+int c850_ui_shift_k1(const u16 *k, const u16 *p, u16 *own, u16 key_k1);
 
 typedef void c850_ui_key_filter_fn(const u16 *k, const u16 *p, u16 *own);
 #define C850_UI_KEY_FILTER(fn) \
     static c850_ui_key_filter_fn *const c850_ui_filter_##fn \
         __attribute__((used, section(".c850_ui_filters"))) = fn
 
+/* ---- state tick hooks (pool 0x0C0EC838, FUN_0C0EB388) ---- */
+void c850_ui_tick(void);
+
+typedef void c850_ui_tick_fn(void);
+#define C850_UI_TICK_HOOK(fn) \
+    static c850_ui_tick_fn *const c850_ui_tick_##fn \
+        __attribute__((used, section(".c850_ui_ticks"))) = fn
+
 /* ---- mod flags (settings record +0x22) ---- */
 #define C850_UI_FLAGS_BYTE      C850_U8(C850_SETTINGS + 0x22)
 #define C850_UI_FLAGS_MAGIC     0x52            /* written with any flag set; 0 = none */
 #define C850_UI_FLAG_QUANT_OFF  0x01            /* quantize off (default on) */
 #define C850_UI_FLAG_HOT_CUES   0x08            /* hot-cue mode on */
-#define C850_UI_FLAGS_MASK      (C850_UI_FLAG_QUANT_OFF | C850_UI_FLAG_HOT_CUES)
+#define C850_UI_FLAG_WAVE_LEFT  0x04
+#define C850_UI_FLAGS_MASK      (C850_UI_FLAG_QUANT_OFF | C850_UI_FLAG_HOT_CUES | C850_UI_FLAG_WAVE_LEFT)
 
 int c850_ui_flag(u32 flag);                     /* 1 = set */
 int c850_ui_set_flag(u32 flag, int on);         /* 1 = changed and saved, 0 = no room (long name) */

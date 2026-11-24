@@ -2,17 +2,17 @@
 
 [Open the firmware patcher](https://fruitylemonade.github.io/cdj-350-mods/)
 
-Build an update from the original Pioneer CDJ-350 **v1.14** firmware. The optional
-**USB FLAC playback** patch supports stereo 16- or 24-bit FLAC at 44.1 or 48 kHz.
-Playback from folders and rekordbox USB exports, and updating from v1.14 to the
-patched v1.15 build, were verified in the CDJ-350 emulator. Physical deck
-validation is pending.
+Build an update from the original Pioneer CDJ-350 **v1.14** firmware. Available
+modifications, tested in the CDJ-350 emulator (physical deck validation is pending):
+
+- **USB FLAC playback**: stereo 16- or 24-bit FLAC at 44.1 or 48 kHz.
+- **Quantized loops**: snap `BEAT LOOP`, `LOOP IN`, and `LOOP OUT` to the nearest beat of the rekordbox grid, with per-pass drift correction.
 
 ## Build an update in the browser
 
 1. Get the CDJ-350 v1.14 update from [AlphaTheta's firmware downloads](https://pioneer-support.zendesk.com/hc/en-us/articles/11949537649305-Firmware) and extract `C350MAIN.UPD`.
 2. Choose the original file in the patcher. It checks the official SHA-256 and works on your local copy in the browser.
-3. Select **USB FLAC playback** to apply the patch. The output version defaults to `1.15`. For a byte-for-byte stock copy, clear the checkbox and enter `1.14`.
+3. Select the modifications you want to apply (such as **USB FLAC playback** and **Quantized loops**). The output version defaults to `1.15`. For a byte-for-byte stock copy, clear all checkboxes and enter `1.14`.
 4. Select **Patch firmware** or **Repack firmware**, then download `C350MAIN.UPD`.
 
 Keep the original update and use the [official CDJ-350 update guide](https://downloads.support.alphatheta.com/firmwares/dj-players/CDJ-350/CDJ-350_update_guide_en.pdf) for the deck's update procedure.

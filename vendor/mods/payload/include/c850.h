@@ -62,6 +62,58 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define C850_BPM_BASE_TENTHS    C850_U16(0x0C9D23EC) /* 1280 = 128.0 BPM */
 #define C850_BPM_WHOLE_PITCHED  C850_U16(0x0C9D23F0)
 #define C850_BPM_STAGING        C850_U16(0x0C9D0AE0) /* TX page 1 bytes 8..9 */
+#define C850_PITCH_STAGING      C850_U16(0x0C9D0AE2) /* TX page 1 bytes 10..11 */
+#define C850_PITCH_SCALE        C850_U16(0x0CE6CA4E) /* 300=+-6, 200=+-10/WIDE, 320=+-16 */
+#define C850_STAGING_S18        C850_U8(0x0C9D0AF0)  /* sign (0x02|0x01) + MT (0x80) */
+#define C850_STAGING_S19        C850_U8(0x0C9D0AF1)  /* 0x10=2 dec, 0x20=1 dec (WIDE), 0x40=BPM */
+#define C850_STAGING_S1B        C850_U8(0x0C9D0AF3)  /* 0x04=WIDE, 0x20=16, 0x40=10, 0x80=6 */
+
+/* ---- BPM Lock state (FUN_0C0D1F14) ---- */
+#define C850_BPMLOCK_ACTIVE     C850_U8(0x0CE649AC)  /* 1 = locked to Master BPM */
+#define C850_BPMLOCK_EDIT       C850_U8(0x0CE649AD)  /* 1 = editing Master BPM */
+#define C850_BPMLOCK_SET        C850_U8(0x0CE649AE)  /* 1 = Master BPM initialized */
+#define C850_BPMLOCK_MASTER     C850_U32(0x0CE649B0) /* Master BPM in tenths (e.g. 1280) */
+#define C850_BPMLOCK_SAVED_WIDE C850_U8(0x0CE649B8)
+#define C850_BPMLOCK_SAVED_SCALE C850_U16(0x0CE649BA)
+#define C850_BPMLOCK_PITCH      C850_S16(0x0CE649BC) /* locked pitch in 1/100 % */
+#define C850_BPMLOCK_DIR        C850_U8(0x0CE649BE)  /* catch-up direction (1/2/3) */
+#define C850_BPMLOCK_PENDING    C850_U8(0x0CE649BF)  /* catch-up armed */
+#define C850_BPMLOCK_TRACK_BPM  C850_U32(0x0CE649C4) /* track base tenths snapshot */
+#define C850_BPMLOCK_TIMER      C850_U32(0x0C1E0C68) /* 10s Master edit timeout */
+
+static inline s32 c850_effective_pitch(void)
+{
+    return C850_BPMLOCK_ACTIVE == 1 ? (s32)C850_BPMLOCK_PITCH : (s32)C850_PITCH;
+}
+
+/* ---- INFO screen & DB records ---- */
+#define C850_DISPLAY_MODE       C850_U32(0x0C9D0AF8) /* 10 = loaded title, 11 = INFO list */
+#define C850_INFO_CURSOR        C850_U8(0x0CE6D1E4)  /* 0..1 = title, 2.. = INFO list */
+#define C850_INFO_COUNT         C850_U8(0x0CE6D1E5)
+#define C850_INFO_TRACK         C850_S16(0x0C9D1D96)
+#define C850_DB_RECORDS         0x0C9D44D4u
+#define C850_DB_RECORD_SIZE     0x864u
+#define C850_DB_RECORD_ID(rec)  C850_U32((rec) + 0x10)
+#define C850_DB_RECORD_DRIVE(rec) C850_U16((rec) + 0x16)
+#define C850_DB_RECORD_TITLE(rec) ((rec) + 0x38u)
+#define C850_DB_USB_DRIVE       3u
+#define C850_DB_LOAD_SORT_MENU  0x0C0750D8u
+#define C850_DB_UNMOUNT         0x0C04F2B0u
+#define c850_db_record_of_track C850_FN(0x0C073F7C, u32, (int track))
+#define C850_ROW_SOURCE(r)      (0x0C9D196Fu + (r) * 0x100u)
+
+/* ---- BROWSE ---- */
+#define C850_NAV_VIEW           C850_U8(0x0CE6D0FD)
+#define C850_NAV_BROWSE         1u
+#define C850_BROWSE_CACHE_TITLE_OFFSET 0x14u  /* UTF-16 title after a cache entry's track ID */
+#define C850_BROWSE_MENU_LEVEL  C850_U8(0x0C1E108C)
+#define C850_DB_MENU_CACHE      0x0C0BBABEu
+#define C850_DB_TRACK_QUERY     0x0C07C330u
+#define C850_DB_SORT_CURSOR     0x0C11D224u
+#define C850_DB_FINISH_RESULTS  0x0C0BABACu
+#define C850_DB_RESULTS_COUNT(results) C850_U16((results) + 2)
+#define C850_DB_RESULTS_SORT(results)  C850_U8((results) + 4)
+#define C850_DB_RESULTS_INDEX(results) C850_U32((results) + 0x2C)
 
 /* ---- Keys (section 4b.1) ---- */
 #define C850_K0                 C850_U16(0x0CE6CA08) /* held keys, internal words */
@@ -107,9 +159,20 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define C850_K2_CALL_NEXT   0x0200
 #define C850_K2_CALL_PREV   0x0100
 
-/* ---- Play position (section 4b units: 1 frame = 1/75 s = 588 samples) ---- */
+/* ---- Play position & PCM ring (section 4b units: 1 frame = 1/75 s = 588 samples) ---- */
 #define C850_PLAY_FRAME         C850_U32(0x0C7F647C) /* current play frame [emu] */
 #define C850_RING_READ_INDEX    C850_U16(0x0C7F645C)
+#define C850_RING_WRITE_INDEX   C850_U16(0x0C7F645E)
+#define C850_PCM_RING_BASE      0x0C1E8E5Cu          /* 2400 x 0x930 B stereo 16-bit BE PCM */
+#define C850_PCM_RING_SLOTS     2400u
+#define C850_PCM_SECTOR_BYTES   0x930u               /* 2352 B = 588 stereo 16-bit frames */
+
+/* ---- Waveform staging & ANLZ buffers (section 5, FUN_0C066402, FUN_0C0C2402) ---- */
+#define C850_WAVEFORM_SEQUENCE  C850_U8(0x0C9D1184)  /* 0x70 byte 1 sequence */
+#define C850_WAVEFORM_CHANGED   C850_U32(0x0C9D1188) /* set 1 to bump sequence and resend */
+#define C850_WAVEFORM_SAMPLES   0x0C9D1199u          /* 100 bytes sent by panel_tx_waveform */
+#define C850_WAVEFORM_PWAV      0x0CE65862u          /* 400 x 2 B ANLZ PWAV (h 0..31, w 0..7) */
+#define C850_WAVEFORM_OVERVIEW  0x0CE65B82u          /* 100 B overview (0..15) */
 
 /* ---- Loops (section 4b.2) ---- */
 #define C850_LOOP_ACTIVE        C850_U8(0x0CE6D0ED)
@@ -179,6 +242,7 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define c850_grid_find_beat            C850_FN(0x0C0012E4, int, (u32 ctx, u32 time_ms, int mode))
 #define c850_grid_page_window          C850_FN(0x0C00119E, int, (u32 ctx, u32 file_id))
 #define c850_ring_sector_to_frame      C850_FN(0x0C00851E, u32, (int ring_sector))
+#define c850_sector_to_track           C850_FN(0x0C00586C, u32, (int ring_sector))
 /* cue_call_prev_next(next): 0 = CALL prev, 1 = CALL next (USB branch) */
 #define c850_cue_call_prev_next        C850_FN(0x0C0D3B1A, void, (int next))
 /* cue_select_from_list(src, 1): fills C850_JUMP_TARGET and C850_CUE_FRAME */
@@ -192,6 +256,10 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
  * word 0x0C0B9310 (section 8.4, payload_demo) */
 #define c850_power_tick_1ms            C850_FN(0x0C0EF8C8, void, (void))
 #define C850_TICK_MS                   C850_U32(0x0CE49F54) /* +1 per 1 ms tick */
+/* BPM Lock dispatcher, recalc, and pitch fader converter */
+#define c850_bpm_lock_cmd              C850_FN(0x0C0D1F14, u32, (u32 cmd, u32 a, u32 b))
+#define c850_bpm_lock_recalc           C850_FN(0x0C0D1CE6, u32, (void))
+#define c850_tempo_fader_to_pitch      C850_FN(0x0C0D9B44, u32, (void))
 
 /* ---- Service-mode gate (docs/cdj850-modding.md, "Service mode gate") ----
  * Nonzero while the deck is in a power-on firmware-update mode (USB/CD
