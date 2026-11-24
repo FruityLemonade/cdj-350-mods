@@ -6,7 +6,9 @@
  * Built once into the payload when any built mod names 'c850_ui' in
  * PAYLOAD_COMMON (mods/payloadbuild.py). Users: hot_cues (BEAT SELECT +
  * RELOOP, hot-cue mode), quant_loops (BEAT SELECT + LOOP IN, quantize),
- * loop_resize (reads the quantize flag).
+ * loop_resize (reads the quantize flag), loop_roll (BEAT SELECT + LOOP OUT,
+ * roll mode, kept in RAM: the flags byte has no free bit); the UTILITY items
+ * after VERSION No. (waveform: WAVE PLAYHEAD, quant_loops: QUANTIZE DRIFT).
  */
 #include "c850_ui.h"
 
@@ -147,8 +149,105 @@ static u32 ui_flags2(void)
     return b & C850_UI_FLAGS2_MASK;
 }
 
+/* ---- settings file on the stick ---- */
+
+#define UI_ANLZ_MOUNT       C850_FN(0x0C0C45B4, int, (void *, u32))  /* stock word of pool 0x0C0C11E8 */
+#define UI_FOPEN            C850_FN(0x0C088F74, void *, (const u16 *, u32, const u16 *, const char *))
+#define UI_FREAD            C850_FN(0x0C0890E6, int, (void *, u32, void *))
+#define UI_FWRITE           C850_FN(0x0C08910C, int, (const void *, u32, void *))
+#define UI_FCLOSE           C850_FN(0x0C088FCE, int, (void *))
+
+static const u16 ui_usb_path[] = {
+    '/', 'P', 'I', 'O', 'N', 'E', 'E', 'R', '/', 'M', 'O', 'D', 'S', 'E', 'T', '.', 'D', 'A', 'T', 0,
+};
+static u16 ui_usb_drive;             /* drive letter of the mounted stick; 0 = none seen */
+static u8 ui_usb_have;               /* 1: the flags below are the stick's */
+static u32 ui_usb_flags;
+
+volatile u32 c850_ui_usb_loads;      /* evidence: files read at mount */
+volatile u32 c850_ui_usb_saves;      /* files written */
+volatile u32 c850_ui_usb_errors;     /* opens or writes that failed, bad files */
+
+static const char ui_usb_magic[8] = C850_UI_USB_MAGIC;
+#define UI_FLAGS_ALL        (C850_UI_FLAGS_MASK | (C850_UI_FLAGS2_MASK << 4))
+
+static void ui_usb_load(void)
+{
+    u8 buf[C850_UI_USB_SIZE];
+    void *f;
+    int n, i;
+
+    ui_usb_have = 0;
+    f = UI_FOPEN(&ui_usb_drive, 0, ui_usb_path, "r");
+    if (f == 0)
+        return;                      /* no file yet: the flash flags stay */
+    n = UI_FREAD(buf, sizeof buf, f);
+    UI_FCLOSE(f);
+    if (n != (int)sizeof buf || buf[8] != C850_UI_USB_VERSION || buf[9] < 4u) {
+        c850_ui_usb_errors++;
+        return;
+    }
+    for (i = 0; i < 8; i++)
+        if (buf[i] != (u8)ui_usb_magic[i]) {
+            c850_ui_usb_errors++;
+            return;
+        }
+    ui_usb_flags = ((u32)buf[12] << 24 | (u32)buf[13] << 16 | (u32)buf[14] << 8 | buf[15]) & UI_FLAGS_ALL;
+    ui_usb_have = 1;
+    c850_ui_usb_loads++;
+}
+
+static int ui_usb_save(u32 flags)
+{
+    u8 buf[C850_UI_USB_SIZE];
+    void *f;
+    int i, n;
+
+    if (ui_usb_drive == 0)
+        return 0;
+    for (i = 0; i < 8; i++)
+        buf[i] = (u8)ui_usb_magic[i];
+    buf[8] = C850_UI_USB_VERSION;
+    buf[9] = 4;
+    buf[10] = buf[11] = 0;
+    buf[12] = (u8)(flags >> 24);
+    buf[13] = (u8)(flags >> 16);
+    buf[14] = (u8)(flags >> 8);
+    buf[15] = (u8)flags;
+    f = UI_FOPEN(&ui_usb_drive, 0, ui_usb_path, "w+");
+    if (f == 0) {
+        c850_ui_usb_errors++;
+        return 0;
+    }
+    n = UI_FWRITE(buf, sizeof buf, f);
+    UI_FCLOSE(f);
+    if (n != (int)sizeof buf) {
+        c850_ui_usb_errors++;
+        return 0;
+    }
+    c850_ui_usb_saves++;
+    return 1;
+}
+
+/* Pool 0x0C0C11E8 (read only at 0x0C0C1010 in FUN_0C0C0F88): the stock USB
+ * ANLZ manager set-up of a newly mounted stick, which opens (and creates)
+ * <drive>:/PIONEER/USBANLZ/USBMNG.DAT. The drive letter is the first
+ * halfword of its drive record (ctx + 0xC, as anlz_find_or_create uses it). */
+int c850_ui_usb_mount(void *anlz, u32 arg)
+{
+    int r = UI_ANLZ_MOUNT(anlz, arg);
+
+    if (anlz != 0 && ((u32)anlz & 3u) == 0) {
+        ui_usb_drive = *(const u16 *)((const u8 *)anlz + 0xC);
+        ui_usb_load();
+    }
+    return r;
+}
+
 static u32 ui_flags(void)
 {
+    if (ui_usb_have)
+        return ui_usb_flags;
     return ui_flags1() | (ui_flags2() << 4);
 }
 
@@ -161,10 +260,18 @@ int c850_ui_set_flags(u32 mask, u32 value)
 {
     u32 m1 = mask & C850_UI_FLAGS_MASK;
     u32 m2 = (mask >> 4) & C850_UI_FLAGS2_MASK;
+    u32 all = (ui_flags() & ~mask) | (value & mask & UI_FLAGS_ALL);
     u32 v1, v2;
+    int saved = 0;
 
+    /* the stick first: it has room whatever the HISTORY name */
+    if (ui_usb_save(all)) {
+        ui_usb_flags = all;
+        ui_usb_have = 1;
+        saved = 1;
+    }
     if ((m2 && !ui_name_short(0x1E)) || (m1 && !ui_name_short(0x1F)))
-        return 0;
+        return saved;
     if (m1) {
         v1 = (ui_flags1() & ~m1) | (value & m1);
         C850_UI_FLAGS_BYTE = v1 ? (u8)(C850_UI_FLAGS_MAGIC | v1) : 0;
@@ -185,6 +292,127 @@ int c850_ui_set_flag(u32 flag, int on)
 int c850_ui_quantize(void)
 {
     return !c850_ui_flag(C850_UI_FLAG_QUANT_OFF);
+}
+
+/* ---- UTILITY items ---- */
+
+#define UI_UTIL_MODE        12u
+#define UI_UTIL_LEVEL       C850_U8(0x0C1E108C)
+#define UI_UTIL_CURSOR      C850_U8(0x0C1E108D)
+#define UI_UTIL_TIMEOUT     C850_U32(0x0C1E1078)
+#define UI_UTIL_SCROLL      C850_FN(0x0C0E4DF6, void, (s8, u8))   /* utility_scroll_item */
+#define UI_UTIL_SET_LEVEL   C850_FN(0x0C0E4C14, void, (u32, int)) /* utility_set_menu_level */
+#define UI_UTIL_REDRAW      C850_FN(0x0C06F71C, void, (int))
+#define UI_UTIL_MAX         8u
+
+const c850_ui_utility_item *const c850_ui_items_start[1]
+    __attribute__((used, section(".c850_ui_items.a"))) = {0};
+const c850_ui_utility_item *const c850_ui_items_end[1]
+    __attribute__((used, section(".c850_ui_items.z"))) = {0};
+
+volatile u32 c850_ui_utility_selects;  /* evidence: presses on a mod item */
+
+/* The visible items in ascending order; returns how many. */
+static u32 ui_util_items(const c850_ui_utility_item **out)
+{
+    u32 f, end = (u32)c850_ui_items_end, n = 0, i;
+    const c850_ui_utility_item *it;
+
+    for (f = (u32)(c850_ui_items_start + 1); f < end && n < UI_UTIL_MAX; f += 4) {
+        it = *(const c850_ui_utility_item *const *)f;
+        if (it->value() == 0)
+            continue;
+        for (i = n; i > 0 && out[i - 1]->order > it->order; i--)
+            out[i] = out[i - 1];
+        out[i] = it;
+        n++;
+    }
+    return n;
+}
+
+static const c850_ui_utility_item *ui_util_item(u32 cursor)
+{
+    const c850_ui_utility_item *items[UI_UTIL_MAX];
+    u32 n = ui_util_items(items);
+
+    if (cursor < C850_UI_UTILITY_FIRST || cursor - C850_UI_UTILITY_FIRST >= n)
+        return 0;
+    return items[cursor - C850_UI_UTILITY_FIRST];
+}
+
+/* Pool 0x0C0E797C (read at 0x0C0E77C4): rotary in UTILITY level 2, 0 = CCW,
+ * 1 = CW. Stock clamps at item 6; the mod items continue the list. */
+void c850_ui_utility_scroll(s8 direction, u8 steps)
+{
+    const c850_ui_utility_item *items[UI_UTIL_MAX];
+    s32 item = (s32)UI_UTIL_CURSOR;
+    s32 next = item + (direction == 1 ? (s32)steps : -(s32)steps);
+    s32 last = (s32)C850_UI_UTILITY_FIRST - 1 + (s32)ui_util_items(items);
+
+    if (item < (s32)C850_UI_UTILITY_FIRST && next < (s32)C850_UI_UTILITY_FIRST) {
+        UI_UTIL_SCROLL(direction, steps);
+        return;
+    }
+    if (next < 0)
+        next = 0;
+    if (next > last)
+        next = last;
+    UI_UTIL_TIMEOUT = 15000u;
+    if (next != item) {
+        UI_UTIL_CURSOR = (u8)next;
+        UI_UTIL_REDRAW(1);
+    }
+}
+
+/* Pool 0x0C0E7F10 (read at 0x0C0E7E64): encoder press in the UTILITY list,
+ * stock utility_set_menu_level(3, item). A mod item switches its value in
+ * place (the list stays at level 2). */
+void c850_ui_utility_select(u32 level, int item)
+{
+    const c850_ui_utility_item *it = 0;
+
+    if (level == 3u && item >= (int)C850_UI_UTILITY_FIRST)
+        it = ui_util_item((u32)item);
+    if (it == 0) {
+        UI_UTIL_SET_LEVEL(level, item);
+        return;
+    }
+    it->select();
+    c850_ui_utility_selects++;
+    UI_UTIL_TIMEOUT = 15000u;
+    UI_UTIL_REDRAW(1);
+}
+
+static void ui_util_row(u32 row, u8 tag, u8 arrows, const char *text)
+{
+    volatile u8 *record = (volatile u8 *)C850_MATRIX_ROW(row);
+    u8 len = 0;
+
+    record[0] = tag;
+    record[1] = 0;
+    record[2] = arrows;
+    record[3] = 0;
+    while (text[len] != '\0') {
+        record[5u + len] = (u8)text[len];
+        len++;
+    }
+    record[4] = len;
+}
+
+/* Rows 1 (title, scroll arrows) and 2 (value) of the UTILITY list on a mod
+ * item, as stock writes them for its own items. */
+void c850_ui_utility_draw(void)
+{
+    const c850_ui_utility_item *it;
+
+    if (C850_U32(0x0C9D0AF8) != UI_UTIL_MODE || UI_UTIL_LEVEL != 2u ||
+        UI_UTIL_CURSOR < C850_UI_UTILITY_FIRST)
+        return;
+    it = ui_util_item(UI_UTIL_CURSOR);
+    if (it == 0)
+        return;
+    ui_util_row(1, 0x06, 0x0B, it->title);
+    ui_util_row(2, 0x43, 0, it->value());
 }
 
 /* ---- display flash ----
@@ -286,6 +514,7 @@ void c850_ui_flash_hook(u32 *regs, u32 *sp)
 
     (void)regs;
     (void)sp;
+    c850_ui_utility_draw();
     if (req != fl_seen) {
         const u8 *t = (const u8 *)fl_text;
         u32 n = 0;

@@ -18,7 +18,19 @@ OPTIONS = {
     ),
     "quant_loops": (
         "Quantized loops",
-        "Snap BEAT LOOP, LOOP IN, and LOOP OUT to the nearest beat of the rekordbox grid, with per-pass drift correction. Tested in the CDJ-350 emulator.",
+        "Snap BEAT LOOP, LOOP IN, and LOOP OUT to the nearest beat of the rekordbox grid, with per-pass drift correction. Switch QUANTIZE and DRIFT FIX in UTILITY (both on by default, saved). Tested in the CDJ-350 emulator.",
+    ),
+    "info_order": (
+        "INFO track details",
+        "The INFO rotary shows Title - Artist, the actual BPM with two decimals and the Camelot key (such as 128.23 8A), and the track rating (USB tracks). Tested in the CDJ-350 emulator.",
+    ),
+    "browse": (
+        "Played markers and track sort",
+        "Mark tracks played for over 20 seconds with * in the USB browser, and list TRACK by BPM or key (UTILITY > SORT, saved). Tested in the CDJ-350 emulator.",
+    ),
+    "bpm999": (
+        "BPM up to 999",
+        "Beat grids above 180 BPM keep their real tempo instead of 180.0, and BPM LOCK's master BPM goes up to 999. Tested in the CDJ-350 emulator.",
     ),
 }
 MODS = {name: list(modelfw.mod_patch(name, MODEL).MODS) for name in OPTIONS}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Add USB FLAC playback and quantized loops to the original Pioneer CDJ-350 v1.14 firmware in your browser.">
+  <meta name="description" content="Add USB FLAC playback, quantized loops, INFO track details, played markers, track sorting, and BPM up to 999 to the original Pioneer CDJ-350 v1.14 firmware in your browser.">
   <meta name="theme-color" content="#171819">
   <title>CDJ-350 Firmware Patcher</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171819'/%3E%3Cpath d='M7 16h18M16 7v18' fill='none' stroke='%23ffb455' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ffb455'/%3E%3C/svg%3E">
@@ -21,7 +21,7 @@
       <div class="intro">
         <div>
           <h1>Firmware Patcher</h1>
-          <p>Add USB FLAC playback and quantized loops to an original Pioneer CDJ-350 update, or repack it with a different version label.</p>
+          <p>Add USB FLAC playback, quantized loops, INFO track details, played markers, track sorting, and BPM up to 999 to an original Pioneer CDJ-350 update, or repack it with a different version label.</p>
         </div>
         <div class="compatibility">
           <span class="label">Supported firmware</span>
@@ -66,7 +66,28 @@
               <input type="checkbox" id="quant_loops" value="quant_loops" aria-describedby="quant_loops-help">
               <div>
                 <label for="quant_loops">Quantized loops</label>
-                <p id="quant_loops-help">Snap BEAT LOOP, LOOP IN, and LOOP OUT to the nearest beat of the rekordbox grid, with per-pass drift correction. Tested in the CDJ-350 emulator.</p>
+                <p id="quant_loops-help">Snap BEAT LOOP, LOOP IN, and LOOP OUT to the nearest beat of the rekordbox grid, with per-pass drift correction. Switch QUANTIZE and DRIFT FIX in UTILITY (both on by default, saved). Tested in the CDJ-350 emulator.</p>
+              </div>
+            </div>
+            <div class="mod-option">
+              <input type="checkbox" id="info_order" value="info_order" aria-describedby="info_order-help">
+              <div>
+                <label for="info_order">INFO track details</label>
+                <p id="info_order-help">The INFO rotary shows Title - Artist, the actual BPM with two decimals and the Camelot key (such as 128.23 8A), and the track rating (USB tracks). Tested in the CDJ-350 emulator.</p>
+              </div>
+            </div>
+            <div class="mod-option">
+              <input type="checkbox" id="browse" value="browse" aria-describedby="browse-help">
+              <div>
+                <label for="browse">Played markers and track sort</label>
+                <p id="browse-help">Mark tracks played for over 20 seconds with * in the USB browser, and list TRACK by BPM or key (UTILITY &gt; SORT, saved). Tested in the CDJ-350 emulator.</p>
+              </div>
+            </div>
+            <div class="mod-option">
+              <input type="checkbox" id="bpm999" value="bpm999" aria-describedby="bpm999-help">
+              <div>
+                <label for="bpm999">BPM up to 999</label>
+                <p id="bpm999-help">Beat grids above 180 BPM keep their real tempo instead of 180.0, and BPM LOCK's master BPM goes up to 999. Tested in the CDJ-350 emulator.</p>
               </div>
             </div>
           </section>
