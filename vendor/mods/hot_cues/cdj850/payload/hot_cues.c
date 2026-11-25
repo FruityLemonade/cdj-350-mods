@@ -147,13 +147,31 @@ int hot_cues_mode(void)
 {
     if (!hot_cues_on)
         return 0;
-    return c850_ui_flag(C850_UI_FLAG_HOT_CUES);
+    return c850_ui_hot_cues_active();
 }
 
-/* No UTILITY item: hot-cue mode is BEAT SELECT + RELOOP (the old HOT CUES
- * ON/OFF flag, C850_UI_FLAG_HOT_CUES_OFF, is ignored). */
+static const char *hc_utility_value(void)
+{
+    if (!hot_cues_on)
+        return 0;
+    return c850_ui_flag(C850_UI_FLAG_HOT_CUES_OFF) ? "OFF" : "ON";
+}
 
-#define HC_PLAY_TRIES 8
+static void hc_utility_select(void)
+{
+    int off = !c850_ui_flag(C850_UI_FLAG_HOT_CUES_OFF);
+
+    c850_ui_set_flag(C850_UI_FLAG_HOT_CUES_OFF, off);
+    if (off)
+        c850_ui_set_hot_cues_armed(0);
+}
+
+static const c850_ui_utility_item hc_utility_item = {
+    75u, "HOT CUES", hc_utility_value, hc_utility_select,
+};
+C850_UI_UTILITY_ITEM(hc_utility_item);
+
+#define HC_PLAY_TRIES 16
 #define HC_PLAY_GAP   10
 
 static u32 hc_key(void)
@@ -228,14 +246,13 @@ static int hc_state_ok(u32 st)
 
 static void hc_toggle_mode(void)
 {
-    int on = !hot_cues_mode();
+    int on;
 
-    if (c850_ui_set_flag(C850_UI_FLAG_HOT_CUES, on)) {
-        hot_cues_toggles++;
-    } else {                          /* a 31-character name holds the byte */
-        hot_cues_failed++;
-        on = !on;
-    }
+    if (c850_ui_flag(C850_UI_FLAG_HOT_CUES_OFF))
+        return;
+    on = !c850_ui_hot_cues_armed();
+    c850_ui_set_hot_cues_armed(on);
+    hot_cues_toggles++;
     c850_ui_flash(on ? "HOT CUE ON" : "HOT CUE OFF");
 }
 
@@ -246,7 +263,7 @@ static void hot_cues_key_filter(const u16 *k, const u16 *p, u16 *own)
     u16 p1 = p[1];
     int i;
 
-    if (!hot_cues_on)
+    if (!hot_cues_on || c850_ui_flag(C850_UI_FLAG_HOT_CUES_OFF))
         return;
     if (c850_ui_shift(k, p, own, C850_K0_RELOOP)) {
         hc_toggle_mode();
@@ -327,12 +344,194 @@ int hot_cues_select(int src, int dir, int x)
     return 0;
 }
 
+/* ---- instant jump: an in-ring seek of the IRQ7 feeder (docs 4b.11, 12b) ----
+ *
+ * A point cue whose audio is still in the PCM ring (played sectors kept behind
+ * the play sector, or sectors read ahead of it) is reached by moving the
+ * feeder's read pointer and play sector there, as loop_roll lands and as a
+ * stock loop wrap seeks: no CALL, no ring restart, no prefill. The ring
+ * counters follow by themselves: the ISR and the audio task work them out
+ * from the play sector, the write sector 0x0C7F645E and the behind start
+ * 0x0C7F6460 (FUN_0C008634 / FUN_0C00866E), and the forward path trims the
+ * behind start once more than 1000 sectors lie behind. Only forward playback
+ * at the stock block alignment, outside loops; otherwise the CALL path. */
+#define HC_READ_PTR         C850_U32(0x0C7F6470)   /* next block the feeder plays */
+#define HC_PLAY_SECTOR      C850_S16(0x0C7F645C)
+#define HC_WRITE_SECTOR     C850_S16(0x0C7F645E)
+#define HC_BEHIND_START     C850_S16(0x0C7F6460)
+#define HC_SEG_SOURCE       C850_U32(0x0C7F677C)   /* -1 while no loop segments */
+#define HC_BLOCK_BYTES      0x150u
+#define HC_AHEAD_SPARE      38u                    /* sectors (0.5 s) that must follow the landing */
+#define HC_BEHIND_SPARE     4u                     /* sectors kept clear of the behind start */
+#define HC_CHECK_STEP       16u                    /* sector table checked every 16 sectors */
+
+volatile u32 hot_cues_instant = 1;   /* 0 = every jump takes the CALL path */
+volatile u32 hot_cues_instants;      /* jumps that landed in the ring */
+volatile u32 hot_cues_instant_misses; /* point jumps while playing that had to take CALL */
+volatile u32 hot_cues_instant_sector;
+volatile u32 hot_cues_instant_from;  /* frame the last instant jump left */
+volatile u32 hot_cues_instant_tick;  /* 1 ms tick of the last instant jump */
+
+static u32 hc_ring(s32 v)
+{
+    while (v < 0)
+        v += (s32)C850_PCM_RING_SLOTS;
+    while (v >= (s32)C850_PCM_RING_SLOTS)
+        v -= (s32)C850_PCM_RING_SLOTS;
+    return (u32)v;
+}
+
+static u32 hc_irq_off(void)
+{
+    u32 sr, m;
+
+    __asm__ volatile("stc sr,%0" : "=r"(sr));
+    m = sr | 0xF0u;
+    __asm__ volatile("ldc %0,sr" : : "r"(m) : "memory");
+    return sr;
+}
+
+static void hc_irq_restore(u32 sr)
+{
+    __asm__ volatile("ldc %0,sr" : : "r"(sr) : "memory");
+}
+
+/* The ring sector holding frame f, the run between it and the play sector
+ * checked in the sector table; 0 when that audio is not buffered. */
+static int hc_ring_sector(u32 f, u32 *out)
+{
+    u32 cur = (u32)(u16)HC_PLAY_SECTOR, fcur, lo, flo, n, k, s;
+
+    if (cur >= C850_PCM_RING_SLOTS)
+        return 0;
+    fcur = c850_ring_sector_to_frame((int)cur);
+    if (f >= fcur) {
+        n = f - fcur;
+        if (n + HC_AHEAD_SPARE > hc_ring((s32)HC_WRITE_SECTOR - (s32)cur))
+            return 0;
+        s = hc_ring((s32)(cur + n));
+        lo = cur;
+        flo = fcur;
+    } else {
+        n = fcur - f;
+        if (n + HC_BEHIND_SPARE > hc_ring((s32)cur - (s32)HC_BEHIND_START))
+            return 0;
+        s = hc_ring((s32)cur - (s32)n);
+        lo = s;
+        flo = f;
+    }
+    for (k = 0;; k += HC_CHECK_STEP) {
+        if (k > n)
+            k = n;
+        if (c850_ring_sector_to_frame((int)hc_ring((s32)(lo + k))) != flo + k)
+            return 0;
+        if (k == n)
+            break;
+    }
+    *out = s;
+    return 1;
+}
+
+/* Land on frame f while playing; 1 = done. */
+static int hc_jump_in_ring(u32 f)
+{
+    u32 s, sr, ptr;
+
+    if (!hot_cues_instant || C850_LOOP_ACTIVE != 0 || HC_SEG_SOURCE != 0xFFFFFFFFu)
+        return 0;
+    ptr = HC_READ_PTR;
+    if (ptr < C850_PCM_RING_BASE || (ptr - C850_PCM_RING_BASE) % HC_BLOCK_BYTES != 0)
+        return 0;                     /* reverse or a ramp: not the stock forward alignment */
+    if (!hc_ring_sector(f, &s))
+        return 0;
+    hot_cues_instant_from = C850_PLAY_FRAME;
+    sr = hc_irq_off();
+    HC_READ_PTR = C850_PCM_RING_BASE + s * C850_PCM_SECTOR_BYTES;
+    HC_PLAY_SECTOR = (s16)s;
+    hc_irq_restore(sr);
+    hot_cues_instant_sector = s;
+    hot_cues_instant_tick = C850_TICK_MS;
+    hot_cues_instants++;
+    return 1;
+}
+
+/* ---- short prefill: pool 0x0C0F54D8 (FUN_0C008C8A), the cue prefill request ----
+ *
+ * A USB CALL restarts the ring; the audio task then asks the reader for 400
+ * sectors (5.33 s) from slot 120 (0x0C0F533A..0x0C0F534E) and takes PLAY only
+ * once they are in. The pool word that call reads (once, at 0x0C0F534C) lies in
+ * the boot-critical closure; it is redirected through the service-mode gate
+ * (GATED_BOOT_POOLS), so in an update mode the stock request runs untouched.
+ * For a hot-cue CALL (armed by hc_jump for HC_PREFILL_ARM_MS) the count is
+ * hot_cues_prefill (at least HC_PREFILL_MIN); the reader's end slot, done flag
+ * and timeout follow from the count FUN_0C008C8A is given, the stock kind-5
+ * read of the 120 sectors before the cue and the ready report follow as after
+ * 400, and the stock streaming then refills ahead. Runs on the audio task. */
+#define HC_RING_REQUEST     C850_FN(0x0C008C8A, void, (int kind, int p2, u32 max, u32 pos, u32 count, \
+                                                     u32 start, int p7))
+#define HC_PREFILL_STOCK    400u
+#define HC_PREFILL_SLOT     120u
+#define HC_PREFILL_ARM_MS   2000u
+/* The audio task arms playback (play sector = slot 120, then the 120 sectors
+ * before the cue as a kind-5 request, then ready) only once about 150 sectors
+ * of the prefill are in: in the emulator 160 sectors became ready and 140 left
+ * the deck in state 6 for good. Counts below HC_PREFILL_MIN are raised to it. */
+#define HC_PREFILL_MIN      180u
+
+volatile u32 hot_cues_prefill = HC_PREFILL_MIN;  /* sectors (2.4 s) for a hot-cue CALL; 0 or >= 400 = stock */
+volatile u32 hot_cues_prefills;      /* prefill requests shortened */
+volatile u32 hot_cues_prefill_last;  /* count of the last request through the word */
+volatile u32 hot_cues_prefill_tick;  /* 1 ms tick of the last shortened request */
+static volatile u8 hc_prefill_armed;
+static volatile u32 hc_prefill_since;
+
+static void hc_prefill_arm(void)
+{
+    hc_prefill_since = C850_TICK_MS;
+    hc_prefill_armed = 1;
+}
+
+void hot_cues_ring_request(int kind, int p2, u32 max, u32 pos, u32 count, u32 start, int p7)
+{
+    u32 n = hot_cues_prefill;
+
+    if (hc_prefill_armed && kind == 4 && count == HC_PREFILL_STOCK && start == HC_PREFILL_SLOT) {
+        hc_prefill_armed = 0;
+        if (hot_cues_on && n != 0 && n < HC_PREFILL_STOCK) {
+            count = n < HC_PREFILL_MIN ? HC_PREFILL_MIN : n;
+            hot_cues_prefills++;
+            hot_cues_prefill_tick = C850_TICK_MS;
+        }
+    }
+    hot_cues_prefill_last = count;
+    HC_RING_REQUEST(kind, p2, max, pos, count, start, p7);
+}
+
 static void hc_jump(u32 n, u32 rec, u32 st)
 {
     if (HC_REC_TO_ENTRY(rec, hc_entry) != 1) {
         hot_cues_failed++;
         return;
     }
+    if (!(hc_entry[0] & 1u) &&
+        (st == C850_STATE_PLAYING || st == C850_STATE_PAUSED_CDJ || st == C850_STATE_CUED) &&
+        C850_PLAYER_STATE == st) {
+        if (hc_jump_in_ring(hc_entry[3])) {
+            hot_cues_jumps++;
+            hot_cues_last_slot = n;
+            hot_cues_last_in = hc_entry[3];
+            hot_cues_last_out = 0;
+            if (st != C850_STATE_PLAYING) {
+                C850_PLAY_FRAME = hc_entry[3];
+                hc_play = HC_PLAY_TRIES;
+                hc_play_wait = 1;
+            }
+            return;
+        }
+        if (st == C850_STATE_PLAYING)
+            hot_cues_instant_misses++;
+    }
+    hc_prefill_arm();
     hc_sel = 1;
     c850_cue_call_prev_next(1);
     if (hc_sel) {                     /* the CALL path's gates said no */
@@ -344,10 +543,9 @@ static void hc_jump(u32 n, u32 rec, u32 st)
     hot_cues_last_slot = n;
     hot_cues_last_in = hc_entry[3];
     hot_cues_last_out = (hc_entry[0] & 1u) ? hc_entry[4] : 0;
-    if ((st == C850_STATE_PLAYING || st == C850_STATE_LOOPING) && C850_PLAYER_STATE == C850_STATE_CUED) {
-        hc_play = HC_PLAY_TRIES;
-        hc_play_wait = 1;
-    }
+    /* Wait in hot_cues_tick until c850_cue_call_prev_next's seek settles, then auto-play. */
+    hc_play = HC_PLAY_TRIES;
+    hc_play_wait = 1;
 }
 
 /* Write hot cue n (rec) through the stock ANLZ hot-cue setter. */
@@ -496,6 +694,8 @@ void hot_cues_tick(void)
 
     hc_refresh();
     hc_track_out();
+    if (hc_prefill_armed && C850_TICK_MS - hc_prefill_since > HC_PREFILL_ARM_MS)
+        hc_prefill_armed = 0;         /* the CALL made no prefill request */
     /* After a jump that was playing: PLAY presses for the state-6 handler,
      * as after a stock CALL, until the deck plays (the handler ignores a
      * press while the cue is still being prepared). Press one tick, release
@@ -506,9 +706,12 @@ void hot_cues_tick(void)
             C850_K0 &= ~C850_K0_PLAY;
         hc_play_wait = HC_PLAY_GAP;
     } else if (hc_play) {
-        if (C850_PLAYER_STATE != C850_STATE_CUED || (c850_ui_kt[0] & C850_K0_PLAY)) {
-            hc_play = 0;              /* playing (or the DJ took over) */
-        } else if (hc_play_wait == 0 || --hc_play_wait == 0) {
+        u32 st = C850_PLAYER_STATE;
+        if (st == C850_STATE_PLAYING || st == C850_STATE_LOOPING) {
+            hc_play = 0;              /* playing */
+        } else if ((st == C850_STATE_CUED || st == C850_STATE_PAUSED_CDJ) &&
+                   !(c850_ui_kt[0] & C850_K0_PLAY) &&
+                   (hc_play_wait == 0 || --hc_play_wait == 0)) {
             C850_K0 |= C850_K0_PLAY;
             hc_play_down = 1;
             hc_play--;
@@ -578,7 +781,7 @@ int hot_cues_wait(int flg, u32 ptn, int mode, u32 *out, int tmo)
         hot_cues_mask = m;
         hc_sv_beats = C850_AUTO_LOOP_BEATS;
         hc_sv_d154 = C850_BEAT_FRACTION_MODE;
-        hc_fk_beats = (u8)(~m & 7u);
+        hc_fk_beats = (u8)((~m & 7u) | 8u);
         C850_AUTO_LOOP_BEATS = hc_fk_beats;
         C850_BEAT_FRACTION_MODE = 0;
         hc_fk = 1;

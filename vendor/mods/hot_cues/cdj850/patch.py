@@ -87,6 +87,13 @@ MODS = {
         'hot cues: delete and PCOB count in the ANLZ hot-cue write',
         [0x64A3, 0x65C3, 0xDE63, 0x4E0B, 0x67B3, 0xA001], 2,
         0x0C0C5960, 'hot_cues_anlz_write'),
+    # 0x0C0F5348: mov.b @r6,r5; mov.l @(..),r7; mov.l @(0x0C0F54D8),r2; jsr @r2; mov r13,r6;
+    # add #12,r15 -- the cue prefill request FUN_0C008C8A(4, .., 400, 120, ..) of the audio task.
+    # The pool word is inside the boot-critical closure: players/cdj850.GATED_BOOT_POOLS.
+    'hot_cues_prefill': _redirect(
+        'hot cues: a short ring prefill after a hot-cue CALL (gated, audio task)',
+        [0x6560, 0xD760, 0xD262, 0x420B, 0x66D3, 0x7F0C], 2,
+        0x0C008C8A, 'hot_cues_ring_request'),
     'hot_cues_flash': Mod(
         what='hot cues: HOT CUE ON / OFF on the display after a toggle',
         target='main',
@@ -98,4 +105,16 @@ MODS = {
         routine='payload:c850_ui_flash_hook',
         **BPM_SITE,
     ),
+    'hot_cues_utility_scroll': _redirect(
+        'hot cues: UTILITY list continues after VERSION No. (shared c850_ui items)',
+        [0x35F1, 0x4020, 0xD26D, 0x424B, 0xD56D, 0xB6CC, 0x6450], 2,
+        0x0C0E4DF6, 'c850_ui_utility_scroll'),
+    'hot_cues_utility_select': _redirect(
+        'hot cues: HOT CUES ON/OFF in UTILITY (shared c850_ui items)',
+        [0x3551, 0x8000, 0xD22A, 0x420B, 0xE403, 0xA1CF, 0x0009], 2,
+        0x0C0E4C14, 'c850_ui_utility_select'),
+    'hot_cues_usb_settings': _redirect(
+        'hot cues: read the mod settings file on the stick at mount (shared c850_ui)',
+        [0x1D01, 0xD575, 0xD775, 0x470B, 0x64D3, 0x2008, 0x8903], 2,
+        0x0C0C45B4, 'c850_ui_usb_mount'),
 }
