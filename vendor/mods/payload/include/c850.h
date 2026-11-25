@@ -45,6 +45,7 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 /* ---- Player, transport, pitch (section 4) ---- */
 #define C850_IS_USB_MODE        C850_U8(0x0CE6D25A)  /* 1 = USB/data mode, 0 = CD */
 #define C850_SOURCE_INDEX       C850_U8(0x0CE6D252)  /* active source (2 = USB) */
+#define C850_USB_MOUNTED        C850_U8(0x0CE6D147)  /* 1 while a USB stick is mounted [emu] */
 #define C850_PLAYER_STATE_BASE  0x0CE6D25D           /* + source index; section 4b states */
 #define C850_PLAYER_STATE       C850_U8(C850_PLAYER_STATE_BASE + C850_SOURCE_INDEX)
 #define C850_STATE_PLAYING      3
@@ -166,6 +167,16 @@ static inline s32 c850_effective_pitch(void)
 #define C850_PCM_RING_BASE      0x0C1E8E5Cu          /* 2400 x 0x930 B stereo 16-bit BE PCM */
 #define C850_PCM_RING_SLOTS     2400u
 #define C850_PCM_SECTOR_BYTES   0x930u               /* 2352 B = 588 stereo 16-bit frames */
+#define C850_PCM_READ_PTR       C850_U32(0x0C7F6470) /* next block the IRQ7 feeder plays */
+#define C850_PCM_BLOCK_BYTES    0x150u               /* one DSPDREQ: 84 stereo samples, 1.9 ms */
+#define C850_BLOCKS_PER_FRAME   7u                   /* 0x930 = 7 x 0x150 */
+
+/* ---- Forward loop-out test of the IRQ7 feeder (payload/common/c850_loop_out.c) ----
+ * Pool 0x0C07730C -> c850_loop_out_isr: loop_roll_out_hook, quant_loops_out_hook,
+ * then isr_loop_out_reached (0x0C0158D4). Interrupt context. */
+int c850_loop_out_isr(int sector, u32 out, int z);
+u32 c850_read_pos(void);               /* block the read pointer names (frame * 7 + block) */
+int c850_ring_jump(u32 pos_block);     /* 1 = read pointer moved there (in the ring) */
 
 /* ---- Waveform staging & ANLZ buffers (section 5, FUN_0C066402, FUN_0C0C2402) ---- */
 #define C850_WAVEFORM_SEQUENCE  C850_U8(0x0C9D1184)  /* 0x70 byte 1 sequence */
@@ -282,18 +293,18 @@ static inline int c850_service_mode(void) { return C850_UPDATE_MODE | C850_KEYS_
  * definitions of the tick and of a no-op for every hook, so the link keeps
  * one tick, and a mod's own (strong) hook replaces its no-op. The tick calls
  * the hooks in this order, then the stock handler. Hooks: loop_resize_state4
- * (mods/loop_resize), quant_loops_drift_tick (mods/quant_loops). */
+ * (mods/loop_resize), quant_loops_loop_tick (mods/quant_loops: block loops). */
 #define C850_STATE4_KEYS        C850_FN(0x0C0E0F34, void, (void))
 #define C850_LOOP_TICK_DEFINE                                                   \
     void loop_resize_state4(void) __attribute__((weak));                        \
     void loop_resize_state4(void) {}                                            \
-    void quant_loops_drift_tick(void) __attribute__((weak));                    \
-    void quant_loops_drift_tick(void) {}                                        \
+    void quant_loops_loop_tick(void) __attribute__((weak));                     \
+    void quant_loops_loop_tick(void) {}                                         \
     void c850_loop_tick(void) __attribute__((weak));                            \
     void c850_loop_tick(void)                                                   \
     {                                                                           \
         loop_resize_state4();                                                   \
-        quant_loops_drift_tick();                                               \
+        quant_loops_loop_tick();                                                \
         C850_STATE4_KEYS();                                                     \
     }
 
