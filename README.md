@@ -6,7 +6,7 @@ Build an update from the original Pioneer CDJ-350 **v1.14** firmware. Available
 modifications, tested in the CDJ-350 emulator (physical deck validation is pending):
 
 - **USB FLAC playback**: stereo 16- or 24-bit FLAC at 44.1 or 48 kHz.
-- **Quantized loops**: snap `BEAT LOOP`, `LOOP IN`, and `LOOP OUT` to the nearest beat of the rekordbox grid, with per-pass drift correction. `QUANTIZE` and `DRIFT FIX` switch on or off at the end of the `UTILITY` list (both on by default, saved).
+- **Quantized loops**: snap `BEAT LOOP`, `LOOP IN`, and `LOOP OUT` to the rekordbox grid, and wrap every pass to the 84-sample feeder block, within 1.9 ms of the grid length, so loops never drift (LOOP DIVIDE still works inside them). At the end of the `UTILITY` list, `QUANTIZE` switches it on or off and `Q SIZE` sets the step: 1, 1/2 or 1/4 beat (on and 1 beat by default, saved).
 - **INFO track details**: the INFO rotary shows `Title - Artist`, the actual BPM with two decimals and the Camelot key (such as `128.23 8A`), and `RATING ****` for rekordbox USB tracks.
 - **Played markers and track sort**: tracks played for over 20 seconds get a `*` in the USB browser, and `TRACK` lists by BPM or key (`UTILITY` > `SORT`: DEFAULT / BPM / KEY, saved).
 - **BPM up to 999**: beat grids above 180 BPM keep their real tempo instead of `180.0`, and the `BPM LOCK` master BPM goes up to 999.

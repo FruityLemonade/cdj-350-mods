@@ -18,7 +18,7 @@ OPTIONS = {
     ),
     "quant_loops": (
         "Quantized loops",
-        "Snap BEAT LOOP, LOOP IN, and LOOP OUT to the nearest beat of the rekordbox grid, with per-pass drift correction. Switch QUANTIZE and DRIFT FIX in UTILITY (both on by default, saved). Tested in the CDJ-350 emulator.",
+        "Snap BEAT LOOP, LOOP IN, and LOOP OUT to the rekordbox grid, and wrap every pass within 1.9 ms of the grid length, so loops never drift. Switch QUANTIZE and pick its step (Q SIZE: 1, 1/2 or 1/4 beat) in UTILITY (on and 1 beat by default, saved). Tested in the CDJ-350 emulator.",
     ),
     "info_order": (
         "INFO track details",
