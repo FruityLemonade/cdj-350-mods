@@ -36,11 +36,20 @@ MAIN_PROFILE = ImageProfile(
 #               FUN_0C062F80 (loop_roll_jog).
 #   0x0C063128  display_stage_active_cue_column (0x0C0642CC), read at 0x0C062FE6
 #               in FUN_0C062F80 (waveform_cue_column).
+#   0x0C064DD8  panel_tx_waveform (0x0C0662AE), read at 0x0C064CEC in the
+#               DisplayTask display-update routine (waveform_tx_waveform).
 #   0x0C064DDC  panel_tx_saved_cues (0x0C0664A8), read at 0x0C064CF2 in the
 #               DisplayTask display-update routine (waveform_center_marker).
 #   0x0C0F54D8  FUN_0C008C8A (the ring read request), read only at 0x0C0F534C, the
 #               USB cue prefill of the audio task (hot_cues_prefill).
-GATED_BOOT_POOLS = frozenset((0x0C063124, 0x0C063128, 0x0C064DDC, 0x0C0F54D8))
+#   0x0C014E8C  FUN_0C0F65F0 (USB play tick), read only at 0x0C014D2E in AudioTask
+#               for audio state 3 (hot_cues_play_tick, background cue pre-cache).
+#   0x0C014E90  player_tick_usb_playback (0x0C0F6E6C), read only at 0x0C014D40 in
+#               AudioTask for audio states 4/5 (hot_cues_usb_tick).
+#   0x0C0BE0CC  FUN_0C0BEBA0 (decode dispatch), read only at 0x0C0BDFB4 in
+#               mp3ActTask (hot_cues_beba0, diverted cue pre-cache decode).
+GATED_BOOT_POOLS = frozenset((0x0C063124, 0x0C063128, 0x0C064DD8, 0x0C064DDC, 0x0C0F54D8,
+                              0x0C014E8C, 0x0C014E90, 0x0C0BE0CC))
 
 # The DSP56371 program MAIN uploads over SHI as four contiguous big-endian
 # segments (0x0C155B28..0x0C1593A1, 0x3879 bytes). Segments 1-3 are stage
